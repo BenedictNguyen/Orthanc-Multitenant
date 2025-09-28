@@ -1,0 +1,102 @@
+{
+  "Name": "OVERRIDDEN_BY_ENV",
+  "LoadFromEnvironment": true,
+
+  "StorageDirectory": "/var/lib/orthanc/db",
+  "IndexDirectory": "/var/lib/orthanc/db",
+
+  "PostgreSQL": {
+    "EnableIndex": true,
+    "EnableStorage": true,
+    "Host": "postgres",
+    "Port": 5432,
+    "Database": "orthanc_multitenant",
+    "Username": "orthanc",
+    "Password": "OVERRIDDEN_BY_ENV",
+    "Lock": true,
+    "MaximumConnectionRetries": 10,
+    "ConnectionRetryInterval": 5
+  },
+
+  "DicomAet": "%ORTHANC__DICOM_AET%",
+  "DicomPort": 4242,
+  "HttpPort": 8042,
+
+  // Tắt authentication để dễ test, sau này có thể bật
+  "AuthenticationEnabled": false,
+  "RegisteredUsers": {},
+
+  "DicomAlwaysAllowEcho": true,
+  "DicomAlwaysAllowStore": true,
+  "DicomCheckSeriesStable": true,
+  "SeriesStableDelay": 1,
+
+  "LuaExecutionEnabled": true,
+  "LuaScripts": [
+    "/etc/orthanc/multitenant-autoforward.lua"
+  ],
+
+  // Multi-tenant: Tất cả modalities đều point về cùng 1 PACS center
+  "DicomModalities": {
+    "DATACENTER_PACS": ["01RIS", "125.212.210.165", 104]
+  },
+
+  "MetricsEnabled": true,
+
+  // Tăng storage size cho multi-tenant
+  "MaximumStorageMode": "Recycle", 
+  "MaximumStorageSize": 50000,
+
+  // Tối ưu performance cho multi-tenant
+  "ConcurrentJobs": 16,
+  "DicomThreadsCount": 16,
+  "DicomScpTimeout": 30,
+  "JobsHistorySize": 100,
+  "SyncStorageArea": true,
+  "MaximumPduLength": 131072,
+
+  "Plugins": [
+    "/usr/share/orthanc/plugins"
+  ],
+
+  "DicomWeb": {
+    "Enable": true,
+    "Root": "/dicom-web/",
+    "EnableWado": true,
+    "EnableQido": true,
+    "EnableStow": true
+  },
+
+  "OrthancExplorer2": {
+    "Enable": true,
+    "IsDefault": true
+  },
+
+  "Transfers": {
+    "Enable": true,
+    "Root": "/transfers/"
+  },
+
+  // Enhanced Job Engine với retry cho multi-tenant
+  "Jobs" : {
+    "DefaultRetry" : {
+      "Count": 5,
+      "Delay": 5
+    }
+  },
+
+  "OrthancPeersInDatabase": true,
+  "OrthancPeers": {},
+
+  "HttpDescribeErrors": true,
+  "HttpCompressionEnabled": true,
+
+  "LogExportedResources": true,
+  "HttpVerbose": false,
+  "HttpTimeout": 60,
+  "HttpsVerifyPeers": false,
+
+  // JPEG 2000 Lossless Compression for bandwidth optimization
+  "DecodingThreadsCount": 4,
+  "StorageCompression": true
+}

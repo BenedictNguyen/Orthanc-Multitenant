@@ -1,0 +1,3 @@
+docker exec -it orthanc-multitenant bash
+python3 -m pip install requests --break-system-packages
+python3 -m pip install pydicom --break-system-packages

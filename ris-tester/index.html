@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RIS Tester – Giao diện nhẹ để test Orthanc</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    body { 
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; 
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      min-height: 100vh;
+    }
+    .code { 
+      background:#0f172a; 
+      color:#e6eef8; 
+      padding:0.75rem; 
+      border-radius:0.5rem; 
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace; 
+      white-space:pre-wrap; 
+      font-size: 0.875rem;
+      border: 1px solid #334155;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: all 0.3s ease;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+    .status-success {
+      background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+    }
+    .status-warning {
+      background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    }
+    .status-error {
+      background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+    }
+  </style>
+</head>
+<body class="min-h-screen p-6">
+  <div class="max-w-7xl mx-auto space-y-6">
+    <!-- Header -->
+    <header class="card p-6 rounded-2xl">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold text-slate-800 mb-2">
+            <i class="fas fa-hospital-user text-blue-600 mr-3"></i>
+            RIS Tester
+          </h1>
+          <p class="text-slate-600">
+            Giao diện mô phỏng RIS để test Orthanc – quản lý patient/order, tạo lệnh test và ping Orthanc
+          </p>
+        </div>
+        <div class="text-right">
+          <div class="text-sm font-medium text-slate-700 mb-2">Orthanc API Connection</div>
+          <select id="orthanc-mode" class="form-input p-3 border-2 rounded-lg bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" onchange="updateOrthancBase()">
+            <option value="proxy">🔗 Via Proxy (Recommended)</option>
+            <option value="direct">⚠️ Direct Connection</option>
+          </select>
+          <input id="orthanc-base" class="form-input mt-2 p-3 border-2 rounded-lg bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm" value="/api" />
+        </div>
+      </div>
+    </header>
+
+    <!-- Connection Status -->
+    <div id="connection-status" class="status-success p-4 rounded-xl shadow-lg">
+      <div class="flex items-center">
+        <i class="fas fa-check-circle text-green-700 mr-3 text-lg"></i>
+        <span class="text-green-800 font-medium">Using NGINX proxy - CORS issues resolved. RIS UI: http://localhost:8081</span>
+      </div>
+    </div>
+
+    <!-- Actions Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Check Orthanc -->
+      <div class="card p-6 rounded-xl">
+        <h3 class="font-bold text-lg mb-4 text-slate-800 flex items-center">
+          <i class="fas fa-heartbeat text-red-500 mr-2"></i>
+          Check Orthanc Status
+        </h3>
+        <div class="space-y-3">
+          <button onclick="pingOrthanc('/')" class="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-medium hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-wifi mr-2"></i>Ping Root /
+          </button>
+          <button onclick="pingOrthanc('/system')" class="w-full py-3 px-4 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg font-medium hover:from-slate-700 hover:to-slate-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-server mr-2"></i>System Info
+          </button>
+          <button onclick="pingOrthanc('/tools/find')" class="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg font-medium hover:from-emerald-700 hover:to-emerald-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-search mr-2"></i>Tools/Find
+          </button>
+          <button onclick="pingOrthanc('/patients')" class="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-medium hover:from-purple-700 hover:to-purple-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-users mr-2"></i>Patients List
+          </button>
+        </div>
+        <div id="ping-result" class="mt-4 text-sm text-slate-700"></div>
+      </div>
+
+      <!-- Generate Commands -->
+      <div class="card p-6 rounded-xl">
+        <h3 class="font-bold text-lg mb-4 text-slate-800 flex items-center">
+          <i class="fas fa-terminal text-green-500 mr-2"></i>
+          Generate DICOM Commands
+        </h3>
+        <p class="text-sm text-slate-600 mb-4">Tạo lệnh DCMTK để chạy trong terminal</p>
+        
+        <div class="space-y-3 mb-4">
+          <div>
+            <label class="text-xs font-medium text-slate-600 block mb-1">Calling AET</label>
+            <input id="calling-aet" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="TESTSCU" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600 block mb-1">Called AET (Orthanc)</label>
+            <input id="called-aet" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="ORTHANC_MT" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-2 mb-4">
+          <button onclick="genEchoCmd()" class="py-2 px-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg font-medium hover:from-indigo-700 hover:to-indigo-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-echo mr-2"></i>Generate echoscu
+          </button>
+          <button onclick="genStoreCmd()" class="py-2 px-3 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg font-medium hover:from-emerald-700 hover:to-emerald-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-upload mr-2"></i>Generate storescu
+          </button>
+          <button onclick="genCurlGet('/patients')" class="py-2 px-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-lg font-medium hover:from-gray-700 hover:to-gray-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-code mr-2"></i>Generate curl GET
+          </button>
+        </div>
+
+        <div>
+          <div class="text-xs font-medium text-slate-600 mb-2 flex items-center">
+            <i class="fas fa-terminal mr-1"></i>Generated Command:
+          </div>
+          <div id="network-cmd" class="code mb-3">Click button above to generate command...</div>
+          <button onclick="copyCmd()" class="py-2 px-3 bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-lg text-sm font-medium hover:from-slate-900 hover:to-black transform hover:scale-105 transition-all">
+            <i class="fas fa-copy mr-2"></i>Copy Command
+          </button>
+        </div>
+      </div>
+
+      <!-- Export/Import -->
+      <div class="card p-6 rounded-xl">
+        <h3 class="font-bold text-lg mb-4 text-slate-800 flex items-center">
+          <i class="fas fa-database text-amber-500 mr-2"></i>
+          Data Management
+        </h3>
+        <p class="text-sm text-slate-600 mb-4">Export/Import test data từ localStorage</p>
+        
+        <div class="space-y-3">
+          <button onclick="exportAll()" class="w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-lg font-medium hover:from-amber-700 hover:to-amber-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-download mr-2"></i>Export JSON
+          </button>
+          <input id="import-file" type="file" accept=".json" class="hidden" onchange="importJSON(event)" />
+          <button onclick="document.getElementById('import-file').click()" class="w-full py-3 px-4 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg font-medium hover:from-slate-700 hover:to-slate-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-upload mr-2"></i>Import JSON
+          </button>
+        </div>
+        
+        <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div class="text-xs text-amber-800">
+            <i class="fas fa-info-circle mr-1"></i>
+            <strong>Tip:</strong> Import sẽ ghi đè dữ liệu hiện tại. Backup trước khi import!
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Patients & Orders -->
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <!-- Patients -->
+      <div class="card p-6 rounded-xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-xl text-slate-800 flex items-center">
+            <i class="fas fa-user-injured text-blue-500 mr-2"></i>
+            Patients Management
+          </h3>
+          <button onclick="openPatientForm()" class="py-2 px-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg text-sm font-medium hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-plus mr-1"></i>Add Patient
+          </button>
+        </div>
+        <div id="patients-list" class="space-y-3"></div>
+      </div>
+      
+      <div class="card">
+        <h3>RIS Plugin Services</h3>
+        <button onclick="callService('/ris/create-worklist')">Create Worklist</button>
+        <button onclick="callService('/ris/resend-study')">Resend Study</button>
+        <button onclick="callService('/ris/cleanup')">Cleanup Old Studies</button>
+      </div>
+
+      <!-- Orders -->
+      <div class="card p-6 rounded-xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-xl text-slate-800 flex items-center">
+            <i class="fas fa-clipboard-list text-emerald-500 mr-2"></i>
+            Orders / Studies
+          </h3>
+          <button onclick="openOrderForm()" class="py-2 px-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg text-sm font-medium hover:from-emerald-700 hover:to-emerald-800 transform hover:scale-105 transition-all">
+            <i class="fas fa-plus mr-1"></i>Create Order
+          </button>
+        </div>
+        <div id="orders-list" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="fixed inset-0 hidden flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
+      <div id="modal-inner" class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8"></div>
+    </div>
+
+
+
+    <!-- Footer -->
+    <footer class="text-center py-6">
+      <div class="text-sm text-slate-500">
+        <i class="fas fa-heart text-red-400 mx-1"></i>
+        RIS Tester – Công cụ test Orthanc PACS đơn giản và hiệu quả
+        <i class="fas fa-heart text-red-400 mx-1"></i>
+      </div>
+    </footer>
+  </div>
+
+<script>
+/* Simple RIS Tester JS - Enhanced UI Version
+ - Patients and Orders stored in localStorage (key: ris_tester_data)
+ - Can ping Orthanc endpoints via fetch (through NGINX proxy to avoid CORS)
+ - Generate commands (echoscu, storescu, curl) for manual terminal use
+*/
+
+const STORAGE_KEY = 'ris_tester_data_v1';
+let DATA = loadData();
+
+function loadData(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  } catch(e){}
+  return { patients: [], orders: [] };
+}
+
+function updateOrthancBase(){
+  const mode = document.getElementById('orthanc-mode').value;
+  const baseInput = document.getElementById('orthanc-base');
+  const statusDiv = document.getElementById('connection-status');
+  
+  if(mode === 'proxy'){
+    baseInput.value = '/api';
+    statusDiv.innerHTML = `<div class="flex items-center">
+      <i class="fas fa-check-circle text-green-700 mr-3 text-lg"></i>
+      <span class="text-green-800 font-medium">Using NGINX proxy - CORS issues resolved. RIS UI: http://localhost:8081</span>
+    </div>`;
+    statusDiv.className = 'status-success p-4 rounded-xl shadow-lg';
+  } else {
+    baseInput.value = 'http://localhost:8042';
+    statusDiv.innerHTML = `<div class="flex items-center">
+      <i class="fas fa-exclamation-triangle text-red-700 mr-3 text-lg"></i>
+      <span class="text-red-800 font-medium">⚠️ Direct connection WILL FAIL due to CORS! Use proxy mode instead.</span>
+    </div>`;
+    statusDiv.className = 'status-error p-4 rounded-xl shadow-lg';
+  }
+}
+
+function saveData(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA, null, 2));
+  renderLists();
+}
+
+function renderLists(){
+  // Render Patients
+  const pEl = document.getElementById('patients-list');
+  pEl.innerHTML = '';
+  if(DATA.patients.length === 0) {
+    pEl.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fas fa-user-slash text-3xl mb-2"></i><div>Chưa có bệnh nhân nào</div></div>';
+  } else {
+    DATA.patients.forEach(p => {
+      const d = document.createElement('div');
+      d.className = 'p-4 border border-slate-200 rounded-lg hover:shadow-lg transition-all bg-gradient-to-r from-blue-50 to-indigo-50';
+      d.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <div class="font-semibold text-slate-800 flex items-center">
+              <i class="fas fa-user text-blue-500 mr-2"></i>
+              ${escapeHtml(p.name || '(no name)')} 
+              <span class="text-xs text-slate-500 ml-2 bg-slate-100 px-2 py-1 rounded">[${escapeHtml(p.id)}]</span>
+            </div>
+            <div class="text-sm text-slate-600 mt-1">
+              <i class="fas fa-calendar-alt mr-1"></i>${escapeHtml(p.dob||'N/A')} 
+              <i class="fas fa-venus-mars ml-3 mr-1"></i>${escapeHtml(p.gender||'N/A')}
+              <i class="fas fa-info-circle ml-3 mr-1"></i>Trạng thái: ${renderStatus(p.status || 'Đã lên lịch')}
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button class="py-1 px-3 bg-slate-600 text-white rounded-lg text-xs hover:bg-slate-700 transition-colors" onclick="showPatient('${p.id}')">
+              <i class="fas fa-eye mr-1"></i>View
+            </button>
+            <button class="py-1 px-3 bg-amber-500 text-white rounded-lg text-xs hover:bg-amber-600 transition-colors" onclick="genCurlCreatePatient('${p.id}')">
+              <i class="fas fa-code mr-1"></i>Curl
+            </button>
+            <button class="py-1 px-3 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700 transition-colors" onclick="deletePatient('${p.id}')">
+              <i class="fas fa-trash mr-1"></i>Del
+            </button>
+          </div>
+        </div>`;
+      pEl.appendChild(d);
+    });
+  }
+
+   // Hàm dổi trạng thái
+function renderStatus(status) {
+  let color = "bg-gray-200 text-gray-800";
+  if (status === "Đã lên lịch") color = "bg-yellow-200 text-yellow-800";
+  if (status === "Đã chụp") color = "bg-green-200 text-green-800";
+  return `<span class="px-2 py-1 rounded text-xs font-semibold ${color}">${status}</span>`;
+}
+
+  // Render Orders  
+  const oEl = document.getElementById('orders-list');
+  oEl.innerHTML = '';
+  if(DATA.orders.length === 0) {
+    oEl.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fas fa-clipboard text-3xl mb-2"></i><div>Chưa có order nào</div></div>';
+  } else {
+    DATA.orders.forEach(o => {
+      const p = DATA.patients.find(x=>x.id===o.patientId) || {};
+      const d = document.createElement('div');
+      d.className = 'p-4 border border-slate-200 rounded-lg hover:shadow-lg transition-all bg-gradient-to-r from-emerald-50 to-teal-50';
+      d.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <div class="font-semibold text-slate-800 flex items-center">
+              <i class="fas fa-x-ray text-emerald-500 mr-2"></i>
+              ${escapeHtml(o.modality||'MOD')} • ${escapeHtml(o.studyDescription||'No desc')}
+            </div>
+            <div class="text-sm text-slate-6550 mt-1">
+              <i class="fas fa-user mr-1"></i>Patient: ${escapeHtml(p.name||'(unknown)')} 
+            </div>
+            <div class="flex items-center">
+              <i class="fas fa-hashtag mr-1"></i>
+              <span>Accession: ${escapeHtml(o.accession||'N/A')}</span>
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="flex flex-wrap gap-2 justify-end">
+            <button class="py-1 px-3 bg-slate-600 text-white rounded-lg text-xs hover:bg-slate-700 transition-colors"
+                    onclick="showOrder('${o.id}')">
+              <i class="fas fa-eye mr-1"></i>View
+            </button>
+            ${o.studyUid ? `
+              <button class="py-1 px-3 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors"
+                      onclick="viewDicom('${o.studyUid}')">
+                <i class="fas fa-image mr-1"></i>View DICOM
+              </button>
+            ` : ''}
+            <button class="py-1 px-3 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700 transition-colors"
+                    onclick="deleteOrder('${o.id}')">
+              <i class="fas fa-trash mr-1"></i>Del
+            </button>
+          </div>
+        </div>
+        </div>`;
+      oEl.appendChild(d);
+    });
+  }
+}
+function viewDicom(studyUid) {
+  const url = `http://localhost:8042/ui/app/index.html#/studies/${studyUid}`;
+  window.open(url, "_blank");
+}
+
+
+function escapeHtml(s){ 
+  if(!s) return ''; 
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); 
+}
+
+/* Patient CRUD */
+function openPatientForm(existing){
+  const p = existing ? DATA.patients.find(x=>x.id===existing) : { 
+    id: 'P' + Date.now(), 
+    name:'', 
+    dob:'', 
+    gender:'', 
+    other:'' 
+  };
+  
+  showModal(`
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-xl font-bold text-slate-800 flex items-center">
+        <i class="fas fa-user-edit text-blue-500 mr-2"></i>
+        ${existing ? 'Edit' : 'Create'} Patient
+      </h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600">
+        <i class="fas fa-times text-xl"></i>
+      </button>
+    </div>
+    
+    <div class="grid gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Patient ID</label>
+        <input id="pf-id" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="${escapeHtml(p.id)}" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+        <input id="pf-name" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="${escapeHtml(p.name)}" />
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Date of Birth</label>
+          <input id="pf-dob" type="date" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="${escapeHtml(p.dob)}" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Gender</label>
+          <select id="pf-gender" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">-- Select --</option>
+            <option ${p.gender==='M'?'selected':''} value="M">Male</option>
+            <option ${p.gender==='F'?'selected':''} value="F">Female</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+        <textarea id="pf-other" rows="3" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">${escapeHtml(p.other)}</textarea>
+      </div>
+      <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+        <button class="py-2 px-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all" onclick="savePatient('${existing||''}')">
+          <i class="fas fa-save mr-1"></i>Save
+        </button>
+        <button class="py-2 px-4 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors" onclick="openPatientForm('${p.id}')">
+          <i class="fas fa-edit mr-1"></i>Edit
+        </button>
+        <button class="py-2 px-4 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors" onclick="closeModal()">
+          <i class="fas fa-times mr-1"></i>Close
+        </button>
+      </div>
+    </div>`);
+}
+
+function deletePatient(id){
+  if(!confirm('Xác nhận xóa patient? Tất cả orders liên quan cũng sẽ bị xóa!')) return;
+  DATA.patients = DATA.patients.filter(x=>x.id!==id);
+  DATA.orders = DATA.orders.filter(o=>o.patientId!==id);
+  saveData();
+  showToast('Patient đã được xóa!', 'success');
+}
+
+/* Orders CRUD */
+function openOrderForm(existing){
+  if(DATA.patients.length === 0){
+    showToast('Vui lòng tạo patient trước!', 'warning');
+    return;
+  }
+  
+  const o = existing ? DATA.orders.find(x=>x.id===existing) : { 
+    id:'O'+Date.now(), 
+    patientId:(DATA.patients[0]&&DATA.patients[0].id)||'', 
+    modality:'CT', 
+    accession:'AC'+Math.floor(100000 + Math.random() * 900000),
+    studyDescription:'Test study', 
+    scheduledAt:'', 
+    priority:'R' 
+  };
+  
+  showModal(`
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-xl font-bold text-slate-800 flex items-center">
+        <i class="fas fa-clipboard-list text-emerald-500 mr-2"></i>
+        ${existing ? 'Edit' : 'Create'} Order
+      </h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600">
+        <i class="fas fa-times text-xl"></i>
+      </button>
+    </div>
+    
+    <div class="grid gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Order ID</label>
+        <input id="of-id" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" value="${escapeHtml(o.id)}" />
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Patient</label>
+        <select id="of-pid" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+          ${DATA.patients.map(p=>`<option value="${escapeHtml(p.id)}" ${p.id===o.patientId?'selected':''}>${escapeHtml(p.name||p.id)}</option>`).join('')}
+        </select>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Accession Number</label>
+          <input id="of-acc" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" value="${escapeHtml(o.accession)}" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Modality</label>
+          <select id="of-mod" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+            <option value="CT" ${o.modality==='CT'?'selected':''}>CT - Computed Tomography</option>
+            <option value="MR" ${o.modality==='MR'?'selected':''}>MR - Magnetic Resonance</option>
+            <option value="XR" ${o.modality==='XR'?'selected':''}>XR - X-Ray</option>
+            <option value="US" ${o.modality==='US'?'selected':''}>US - Ultrasound</option>
+            <option value="XA" ${o.modality==='XA'?'selected':''}>XA - X-Ray Angiography</option>
+            <option value="BDM" ${o.modality==='BDM'?'selected':''}>BDM - Bone Densitometry</option>
+          </select>
+        </div>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Study Description</label>
+        <input id="of-desc" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" value="${escapeHtml(o.studyDescription)}" />
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Scheduled Date/Time (Optional)</label>
+        <input id="of-sched" type="datetime-local" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" value="${escapeHtml(o.scheduledAt)}" />
+      </div>
+      
+      <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+        <button class="py-2 px-4 bg-slate-500 text-white rounded-lg hover:bg-slate-600 transition-colors" onclick="closeModal()">
+          <i class="fas fa-times mr-1"></i>Cancel
+        </button>
+        <button class="py-2 px-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all" onclick="saveOrder('${existing||''}')">
+          <i class="fas fa-save mr-1"></i>Save Order
+        </button>
+      </div>
+    </div>`);
+}
+
+function saveOrder(existing){
+  const id = document.getElementById('of-id').value.trim();
+  if(!id){ 
+    showToast('Order ID là bắt buộc!', 'error'); 
+    return; 
+  }
+  
+  const obj = {
+    id,
+    patientId: document.getElementById('of-pid').value,
+    accession: document.getElementById('of-acc').value.trim(),
+    modality: document.getElementById('of-mod').value.trim(),
+    studyDescription: document.getElementById('of-desc').value.trim(),
+    scheduledAt: document.getElementById('of-sched').value
+  };
+  
+  const idx = DATA.orders.findIndex(x=>x.id===id);
+  if(idx>=0 && !existing){
+    if(!confirm('Order ID tồn tại. Ghi đè?')) return;
+    DATA.orders[idx]=obj;
+  } else if(existing){
+    const i = DATA.orders.findIndex(x=>x.id===existing);
+    if(i>=0) DATA.orders[i]=obj;
+  } else {
+    DATA.orders.push(obj);
+  }
+  
+  saveData();
+  closeModal();
+  showToast('Order đã được lưu thành công!', 'success');
+  createDicomFromOrder(obj);
+}
+
+function showOrder(id){
+  const o = DATA.orders.find(x=>x.id===id);
+  if(!o) return showToast('Không tìm thấy order', 'error');
+  const p = DATA.patients.find(x=>x.id===o.patientId) || {};
+  
+  showModal(`
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-xl font-bold text-slate-800 flex items-center">
+        <i class="fas fa-clipboard-list text-emerald-500 mr-2"></i>
+        Order Details
+      </h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600">
+        <i class="fas fa-times text-xl"></i>
+      </button>
+    </div>
+    
+    <div class="space-y-4">
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-emerald-50 p-4 rounded-lg">
+          <div class="text-sm font-medium text-slate-600">Order ID</div>
+          <div class="text-lg font-semibold text-slate-800">${escapeHtml(o.id)}</div>
+        </div>
+        <div class="bg-blue-50 p-4 rounded-lg">
+          <div class="text-sm font-medium text-slate-600">Patient</div>
+          <div class="text-lg font-semibold text-slate-800">${escapeHtml(p.name||o.patientId)}</div>
+        </div>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-purple-50 p-4 rounded-lg">
+          <div class="text-sm font-medium text-slate-600">Accession</div>
+          <div class="text-lg font-semibold text-slate-800">${escapeHtml(o.accession)}</div>
+        </div>
+        <div class="bg-pink-50 p-4 rounded-lg">
+          <div class="text-sm font-medium text-slate-600">Modality</div>
+          <div class="text-lg font-semibold text-slate-800">${escapeHtml(o.modality)}</div>
+        </div>
+      </div>
+      
+      <div class="bg-amber-50 p-4 rounded-lg">
+        <div class="text-sm font-medium text-slate-600">Study Description</div>
+        <div class="text-lg font-semibold text-slate-800">${escapeHtml(o.studyDescription)}</div>
+      </div>
+      
+      ${o.scheduledAt ? `
+        <div class="bg-indigo-50 p-4 rounded-lg">
+          <div class="text-sm font-medium text-slate-600">Scheduled</div>
+          <div class="text-lg font-semibold text-slate-800">${new Date(o.scheduledAt).toLocaleString('vi-VN')}</div>
+        </div>
+      ` : ''}
+      
+      <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+        <button class="py-2 px-4 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors" onclick="genStorescuCmd('${o.id}')">
+          <i class="fas fa-upload mr-1"></i>Generate Storescu
+        </button>
+        <button class="py-2 px-4 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors" onclick="openOrderForm('${o.id}')">
+          <i class="fas fa-edit mr-1"></i>Edit
+        </button>
+        <button class="py-2 px-4 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors" onclick="closeModal()">
+          <i class="fas fa-times mr-1"></i>Close
+        </button>
+      </div>
+    </div>`);
+}
+
+function deleteOrder(id){
+  if(!confirm('Xác nhận xóa order?')) return;
+  DATA.orders = DATA.orders.filter(x=>x.id!==id);
+  saveData();
+  showToast('Order đã được xóa!', 'success');
+}
+
+/* Export/Import */
+function exportAll(){
+  const dataStr = JSON.stringify(DATA, null, 2);
+  const blob = new Blob([dataStr], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); 
+  a.href=url; 
+  a.download='ris_test_data_'+new Date().toISOString().slice(0,10)+'.json'; 
+  document.body.appendChild(a); 
+  a.click(); 
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Data đã được export!', 'success');
+}
+
+function importJSON(e){
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=> {
+    try {
+      const j = JSON.parse(r.result);
+      if(!confirm('Import sẽ ghi đè dữ liệu hiện tại. Tiếp tục?')) return;
+      DATA = j;
+      saveData();
+      showToast('Import thành công!', 'success');
+    } catch(err){ 
+      showToast('File JSON không hợp lệ!', 'error'); 
+    }
+  };
+  r.readAsText(f);
+  e.target.value = ''; // Reset file input
+}
+
+/* Modal helpers */
+function showModal(html){ 
+  document.getElementById('modal-inner').innerHTML = html; 
+  document.getElementById('modal').classList.remove('hidden'); 
+  document.getElementById('modal').classList.add('flex'); 
+}
+
+function closeModal(){ 
+  document.getElementById('modal').classList.add('hidden'); 
+  document.getElementById('modal').classList.remove('flex'); 
+}
+
+/* Generate network commands */
+function genEchoCmd(){
+  const base = document.getElementById('orthanc-base').value.trim();
+  const host = extractHostPort(base) || '127.0.0.1';
+  const port = '4242'; // DICOM port, not HTTP
+  const calling = document.getElementById('calling-aet').value || 'TESTSCU';
+  const called = document.getElementById('called-aet').value || 'ORTHANC_MT';
+  const cmd = `echoscu -v -aet ${calling} -aec ${called} ${host} ${port}`;
+  document.getElementById('network-cmd').textContent = cmd;
+  showToast('Echo command generated!', 'success');
+}
+
+function genStoreCmd(){
+  const base = document.getElementById('orthanc-base').value.trim();
+  const host = extractHostPort(base) || '127.0.0.1';
+  const port = '4242'; // DICOM port
+  const exampleFile = '/path/to/your/dicom/file.dcm';
+  const calling = document.getElementById('calling-aet').value || 'TESTSCU';
+  const called = document.getElementById('called-aet').value || 'ORTHANC_MT';
+  const cmd = `storescu -v -aet ${calling} -aec ${called} ${host} ${port} ${exampleFile}`;
+  document.getElementById('network-cmd').textContent = cmd;
+  showToast('Store command generated!', 'success');
+}
+
+function genCurlGet(path){
+  const base = document.getElementById('orthanc-base').value.trim();
+  const fullUrl = base.startsWith('/') ? `http://localhost:8081${base}${path}` : `${base}${path}`;
+  const curl = `curl -v "${fullUrl}"`;
+  document.getElementById('network-cmd').textContent = curl;
+  showToast('Curl command generated!', 'success');
+}
+
+function genCurlCreatePatient(pid){
+  const p = DATA.patients.find(x=>x.id===pid);
+  if(!p) return showToast('Không tìm thấy patient', 'error');
+  
+  const base = document.getElementById('orthanc-base').value.trim();
+  const fullUrl = base.startsWith('/') ? `http://localhost:8081${base}` : base;
+  
+  // Example payload for creating patient metadata via REST
+  const payload = {
+    "PatientID": p.id,
+    "PatientName": p.name || "",
+    "PatientBirthDate": (p.dob || '').replace(/-/g,''),
+    "PatientSex": p.gender || ""
+  };
+  
+  const curl = `curl -X POST "${fullUrl}/patients" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(payload, null, 2)}'`;
+  
+  document.getElementById('network-cmd').textContent = curl;
+  showToast('Patient creation command generated!', 'success');
+}
+
+function genStorescuCmd(orderId){
+  const o = DATA.orders.find(x=>x.id===orderId);
+  if(!o) return showToast('Không tìm thấy order', 'error');
+  
+  const calling = document.getElementById('calling-aet').value || 'TESTSCU';
+  const called = document.getElementById('called-aet').value || 'ORTHANC_MT';
+
+  // 📌 Gửi cả folder thay vì 1 file
+  const filePath = `E:/Dicomtest/${o.accession}.dcm`;
+
+  const cmd = `storescu -v -aet ${calling} -aec ${called} localhost 4242 "${filePath}"`;
+  
+  document.getElementById('network-cmd').textContent = cmd;
+  showToast(`Storescu command generated for ${o.modality} study (folder upload)!`, 'success');
+}
+
+
+function copyCmd(){
+  const t = document.getElementById('network-cmd').textContent;
+  if(!t || t === 'Click button above to generate command...') {
+    showToast('No command to copy!', 'warning');
+    return;
+  }
+  
+  navigator.clipboard.writeText(t).then(
+    ()=>showToast('Command copied to clipboard!', 'success'), 
+    ()=>showToast('Copy failed - please select and copy manually','error')
+  );
+}
+
+function extractHostPort(url){
+  try {
+    const u = new URL(url);
+    return u.hostname;
+  } catch(e){
+    if(url.includes(':')) return url.split(':')[0];
+    return url;
+  }
+}
+
+function extractPort(url){
+  try { 
+    const u = new URL(url); 
+    return u.port || (u.protocol==='https:'?'443':'80'); 
+  }
+  catch(e){ 
+    if(url.includes(':')) return url.split(':')[1]; 
+    return ''; 
+  }
+}
+
+/* Ping Orthanc */
+async function pingOrthanc(path){
+  const base = document.getElementById('orthanc-base').value.trim();
+  const out = document.getElementById('ping-result');
+  
+  out.innerHTML = '<div class="flex items-center text-blue-600"><i class="fas fa-spinner fa-spin mr-2"></i>Checking connection...</div>';
+  
+  try {
+    const fullUrl = base + path;
+    const res = await fetch(fullUrl, { 
+      method:'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    
+    const contentType = res.headers.get('content-type') || '';
+    let body = '';
+    
+    if(contentType.includes('application/json')) {
+      const jsonData = await res.json();
+      body = JSON.stringify(jsonData, null, 2);
+    } else {
+      body = await res.text();
+    }
+    
+    const statusClass = res.ok ? 'text-green-600' : 'text-red-600';
+    const statusIcon = res.ok ? 'fas fa-check-circle' : 'fas fa-exclamation-triangle';
+    
+    out.innerHTML = `
+      <div class="mb-3">
+        <div class="flex items-center ${statusClass} font-medium">
+          <i class="${statusIcon} mr-2"></i>
+          Status: ${res.status} ${res.statusText}
+        </div>
+        <div class="text-xs text-slate-500 mt-1">URL: ${fullUrl}</div>
+      </div>
+      <div class="code max-h-64 overflow-y-auto">${escapeHtml(body)}</div>
+    `;
+    
+    if(res.ok) {
+      showToast(`Successfully connected to ${path}`, 'success');
+    } else {
+      showToast(`Connection failed: ${res.status}`, 'error');
+    }
+    
+  } catch(err){
+    out.innerHTML = `
+      <div class="text-red-600 font-medium mb-2 flex items-center">
+        <i class="fas fa-exclamation-circle mr-2"></i>
+        Connection Error
+      </div>
+      <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+        <div class="text-sm text-red-800">${escapeHtml(String(err))}</div>
+      </div>
+      <div class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+        <div class="font-medium mb-1">Troubleshooting:</div>
+        <div>• Make sure Orthanc container is running</div>
+        <div>• Use "Via Proxy" mode to avoid CORS</div>
+        <div>• Try generated terminal commands instead</div>
+      </div>
+    `;
+    
+    showToast('Connection failed - check console for details', 'error');
+  }
+}
+
+function callService(endpoint) {
+  const url = orthancBase + endpoint;
+  fetch(url, { method: 'POST' })
+    .then(r => r.json())
+    .then(j => {
+      console.log("Response:", j);
+      alert("Response: " + JSON.stringify(j));
+    })
+    .catch(err => {
+      console.error("Error:", err);
+      alert("Error: " + err);
+    });
+}
+
+async function createDicomFromOrder(order) {
+  try {
+    const patient = DATA.patients.find(p => p.id === order.patientId);
+    const res = await fetch("http://localhost:5000/create-dicom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patientId: patient ? patient.id : order.patientId,
+        patientName: patient ? patient.name : "Unknown",
+        accession: order.accession,
+        modality: order.modality,
+        studyDescription: order.studyDescription,
+        birthDate: patient ? patient.dob.replace(/-/g,'') : "",
+        sex: patient ? patient.gender : ""
+      })
+    });
+    const data = await res.json();
+    if (data.status === "ok") {
+      order.studyUid = data.studyUid;
+      patient.status = "Đã chụp";
+      saveData();
+      renderLists();
+      showToast("Dummy DICOM created & uploaded!", "success");
+    } else {
+      showToast("Failed to create DICOM file", "error");
+    }
+  } catch (err) {
+    console.error(err);
+    showToast("Error calling backend service", "error");
+  }
+}
+
+function savePatient(existing) {
+    const id = document.getElementById('pf-id').value.trim();
+    if (!id) {
+      showToast('⚠️ Patient ID là bắt buộc!', 'error');
+      return;
+    }
+    const obj = {
+      id,
+      name: document.getElementById('pf-name').value.trim(),
+      dob: document.getElementById('pf-dob').value,
+      gender: document.getElementById('pf-gender').value,
+      other: document.getElementById('pf-other').value,
+      status: "Đã lên lịch"
+    };
+    const idx = DATA.patients.findIndex(x => x.id === id);
+    if (idx >= 0) {
+      if (existing || confirm('Patient ID đã tồn tại. Bạn có muốn ghi đè không?')) {
+        DATA.patients[idx] = obj;
+      } else {
+        return;
+      }
+    } else {
+      DATA.patients.push(obj);
+    }
+    saveData();
+    closeModal();
+    showToast('✅ Patient đã được lưu thành công!', 'success');
+  }
+
+  function showPatient(id){
+    const p = DATA.patients.find(x=>x.id===id);
+    if(!p) return showToast('Không tìm thấy patient', 'error');
+    showModal(`
+      <h2 class="text-xl font-semibold mb-4">Patient Details</h2>
+      <div class="space-y-2">
+        <div><b>Patient ID:</b> ${escapeHtml(p.id)}</div>
+        <div><b>Full Name:</b> ${escapeHtml(p.name || 'N/A')}</div>
+        <div><b>Date of Birth:</b> ${escapeHtml(p.dob || 'N/A')}</div>
+        <div><b>Gender:</b> ${escapeHtml(p.gender || 'N/A')}</div>
+        ${p.other ? `<div><b>Notes:</b> ${escapeHtml(p.other)}</div>` : ''}
+      </div>
+
+      <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+        <button class="py-2 px-4 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
+                onclick="closeModal()">
+          <i class="fas fa-times mr-1"></i>Close
+        </button>
+        <button class="py-2 px-4 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+                onclick="openPatientForm('${p.id}')">
+          <i class="fas fa-edit mr-1"></i>Edit
+        </button>
+      </div>
+    `);
+  }
+
+
+/* Toast notifications */
+function showToast(msg, type='info'){
+  const t = document.createElement('div');
+  t.className = 'fixed top-6 right-6 p-4 rounded-lg shadow-lg text-white flex items-center z-50 transform translate-x-full transition-transform duration-300';
+  t.style.minWidth = '300px';
+  
+  let bgColor, icon;
+  switch(type) {
+    case 'success':
+      bgColor = 'bg-gradient-to-r from-green-500 to-green-600';
+      icon = 'fas fa-check-circle';
+      break;
+    case 'error':
+      bgColor = 'bg-gradient-to-r from-red-500 to-red-600';
+      icon = 'fas fa-exclamation-circle';
+      break;
+    case 'warning':
+      bgColor = 'bg-gradient-to-r from-amber-500 to-amber-600';
+      icon = 'fas fa-exclamation-triangle';
+      break;
+    default:
+      bgColor = 'bg-gradient-to-r from-blue-500 to-blue-600';
+      icon = 'fas fa-info-circle';
+  }
+  
+  t.className += ` ${bgColor}`;
+  t.innerHTML = `
+    <i class="${icon} mr-3"></i>
+    <span class="flex-1">${msg}</span>
+    <button onclick="this.parentElement.remove()" class="ml-3 text-white/80 hover:text-white">
+      <i class="fas fa-times"></i>
+    </button>
+  `;
+  
+  document.body.appendChild(t);
+  
+  // Animate in
+  setTimeout(() => t.classList.remove('translate-x-full'), 100);
+  
+  // Auto remove after 5 seconds
+  setTimeout(() => {
+    t.classList.add('translate-x-full');
+    setTimeout(() => t.remove(), 300);
+  }, 5000);
+}
+
+/* Initialize */
+document.addEventListener('DOMContentLoaded', function() {
+  renderLists();
+  updateOrthancBase(); // Set initial status
+  
+  // Add some sample data if empty
+  if(DATA.patients.length === 0 && DATA.orders.length === 0) {
+    // You can uncomment this to add sample data
+    /*
+    DATA.patients.push({
+      id: 'P001',
+      name: 'Nguyễn Văn A',
+      dob: '1990-01-01',
+      gender: 'M',
+      other: 'Sample patient for testing'
+    });
+    DATA.orders.push({
+      id: 'O001',
+      patientId: 'P001',
+      accession: 'AC001',
+      modality: 'CT',
+      studyDescription: 'CT Chest without contrast',
+      scheduledAt: ''
+    });
+    saveData();
+    */
+  }
+});
+</script>
+</body>
+</html>

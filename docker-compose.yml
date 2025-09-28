@@ -1,0 +1,218 @@
+version: "3.9"
+services:
+  # ============================
+  # DATABASE POSTGRESQL - Shared
+  # ============================
+  postgres:
+    image: postgres:15-alpine
+    container_name: orthanc-postgres-db
+    hostname: postgres
+    environment:
+      POSTGRES_USER: orthanc
+      POSTGRES_PASSWORD: ${ORTHANC_DB_PASSWORD:-orthanc}
+      TZ: Asia/Ho_Chi_Minh
+    command: ["postgres", "-c", "max_connections=500", "-c", "shared_buffers=256MB"]
+    volumes:
+      - ./data/postgres-db:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orthanc -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - pacs-net
+
+  # ======================================
+  # SINGLE ORTHANC INSTANCE - Multi-tenant
+  # ======================================
+  orthanc-multitenant:
+    image: orthancteam/orthanc:latest-full
+    container_name: orthanc-multitenant
+    hostname: orthanc-multitenant
+    ports:
+      - "8042:8042"   # Web interface
+      - "4242:4242"   # WL
+      - "4243:4243"   # XR
+      - "4244:4244"   # BDM
+      - "4245:4245"   # US
+      - "4246:4246"   # CT
+      - "4247:4247"   # MR
+      - "4248:4248"   # XA
+    volumes:
+      - ./config/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - ./data/storage-main:/var/lib/orthanc/db
+      - ./plugins:/usr/share/orthanc/plugins
+      - ./lua:/etc/orthanc/lua:ro
+      - ./lua/autoforward.lua:/etc/orthanc/autoforward.lua:ro
+    environment:
+      ORTHANC__NAME: "ORTHANC_MULTITENANT"
+      ORTHANC__DICOM_AET: "ORTHANC_MT"
+      ORTHANC__POSTGRESQL__ENABLE: "true"
+      ORTHANC__POSTGRESQL__HOST: "postgres"
+      ORTHANC__POSTGRESQL__PORT: "5432"
+      ORTHANC__POSTGRESQL__DATABASE: "orthanc_db_main"
+      ORTHANC__POSTGRESQL__USER: "orthanc"
+      ORTHANC__POSTGRESQL__PASSWORD: "${ORTHANC_DB_PASSWORD:-orthanc}"
+      ORTHANC__MONITORING__ENABLED: "true"
+      ORTHANC__SERIES_STABLE_DELAY: 1
+      DATACENTER_AET: ${DATACENTER_AET}
+      DATACENTER_IP: ${DATACENTER_IP}
+      DATACENTER_PORT: ${DATACENTER_PORT}
+      ORTHANC__HTTP_TLS_ENABLED: "false"
+      ORTHANC__HTTP_AUTHENTICATION_ENABLED: "false"
+      ORTHANC__LUA_EXECUTION_ENABLED: "true"
+      ORTHANC__STORAGE_COMPRESSION: "true"
+      ORTHANC__JPEG_QUALITY: 90
+      TELERAD_URL: https://telerad-api.caresnova.ai/api
+      SeCRET_KEY: w4QtgbMk9Wa36YvyvtUEpEqtz8P58GU5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pacs-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8042/explorer.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  # ============================
+  # PROMETHEUS
+  # ============================
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: orthanc-prometheus-local
+    hostname: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./data/prometheus:/prometheus
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - SITE_UUID=${SITE_UUID}
+      - SITE_NAME=${SITE_NAME}
+      - SITE_LOCATION=${SITE_LOCATION}
+      - CENTRAL_MONITORING_URL=${CENTRAL_MONITORING_URL:-}
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--enable-feature=expand-external-labels'
+      - '--web.enable-remote-write-receiver'
+    restart: unless-stopped
+    networks:
+      - pacs-net
+
+  # ============================
+  # GRAFANA
+  # ============================
+  grafana:
+    image: grafana/grafana-oss:10.2.3
+    container_name: orthanc-grafana-local
+    hostname: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_PANELS_DISABLE_SANITIZE_HTML: "true"
+    depends_on:
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - pacs-net
+
+  # ============================
+  # LOKI
+  # ============================
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: orthanc-loki-local
+    hostname: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./config/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - ./data/loki:/loki
+      - ./data/loki-wal:/wal
+    command: -config.file=/etc/loki/local-config.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pacs-net
+
+  # ============================
+  # PROMTAIL
+  # ============================
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: orthanc-promtail
+    hostname: promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config/promtail-config.yml:/etc/promtail/config.yml:ro
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -client.external-labels=site_uuid=${SITE_UUID},site_name=${SITE_NAME},site_location=${SITE_LOCATION}
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - pacs-net
+
+  # ============================
+  # NGINX DASHBOARD
+  # ============================
+  nginx-dashboard:
+    image: nginx:alpine
+    container_name: orthanc-dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/html:/usr/share/nginx/html:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - prometheus
+      - loki
+      - orthanc-multitenant
+    restart: unless-stopped
+    networks:
+      - pacs-net
+
+  ris-ui:
+      image: nginx:alpine
+      container_name: ris-tester-ui
+      hostname: ris-ui
+      ports:
+        - "8081:80"
+      volumes:
+        - ./ris-tester:/usr/share/nginx/html:ro
+        - ./ris-tester/nginx.conf:/etc/nginx/conf.d/nginx.conf:ro
+      depends_on:
+        - orthanc-multitenant
+      restart: unless-stopped
+      networks:
+      - pacs-net
+# ============================
+# VOLUMES & NETWORKS
+# ============================
+volumes:
+  grafana-storage: {}
+
+networks:
+  pacs-net:
+    driver: bridge

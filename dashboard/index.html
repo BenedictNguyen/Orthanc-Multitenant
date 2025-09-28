@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trang Quản trị Hệ thống PACS Nâng cao</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-bg: #f8fafc;
+            --secondary-bg: #ffffff;
+            --primary-text: #1e293b;
+            --secondary-text: #475569;
+            --accent-color: #3b82f6;
+            --border-color: #e2e8f0;
+            --danger-color: #ef4444;
+            --success-color: #22c55e;
+            --warning-color: #f59e0b;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--primary-bg);
+            color: var(--primary-text);
+        }
+        .sidebar-icon {
+            transition: all 0.2s ease-in-out;
+        }
+        .sidebar-icon:hover {
+            color: var(--accent-color);
+            transform: scale(1.1);
+        }
+        .main-content-card {
+            background-color: var(--secondary-bg);
+            border-radius: 0.75rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: all 0.3s ease-in-out;
+        }
+         .main-content-card:hover {
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .btn-primary { background-color: var(--accent-color); color: white; }
+        .btn-primary:hover { background-color: #2563eb; }
+        .btn-secondary { background-color: #e2e8f0; color: #334155; }
+        .btn-secondary:hover { background-color: #cbd5e1; }
+        .code-block {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'Courier New', Courier, monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #334155;
+            color: #94a3b8;
+            border: none;
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .copy-btn:hover { background-color: #475569; }
+        .toast-notification {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            transform: translateY(200%);
+            opacity: 0;
+            transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+            z-index: 9999;
+        }
+        .toast-notification.show { transform: translateY(0); opacity: 1; }
+        .status-light {
+            width: 1rem;
+            height: 1rem;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-light.offline { background-color: #9ca3af; }
+        .status-light.online { background-color: var(--success-color); animation: pulse 2s infinite; }
+        .status-light.warning { background-color: var(--warning-color); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="flex h-screen">
+
+    <!-- Sidebar -->
+    <aside class="w-20 bg-white border-r border-gray-200 flex flex-col items-center py-6 space-y-8">
+        <div class="text-3xl font-bold text-blue-600"><i class="fas fa-shield-virus"></i></div>
+        <nav class="flex flex-col items-center space-y-8">
+            <button onclick="switchTab('config')" id="btn-config" class="sidebar-icon text-2xl text-blue-600" title="Cấu hình hệ thống"><i class="fas fa-cogs"></i></button>
+            <button onclick="switchTab('connect')" id="btn-connect" class="sidebar-icon text-2xl text-gray-400" title="Kiểm tra Kết nối"><i class="fas fa-network-wired"></i></button>
+            <button onclick="switchTab('db')" id="btn-db" class="sidebar-icon text-2xl text-gray-400" title="Trình quản lý DB"><i class="fas fa-database"></i></button>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-6 lg:p-10 overflow-y-auto">
+        <!-- ======================= CONFIG TAB ======================= -->
+        <div id="config-tab" class="space-y-8">
+            <header>
+                <h1 class="text-3xl font-bold text-gray-800">Cấu hình Hệ thống</h1>
+                <p class="text-gray-500 mt-1">Điền, tải lên hoặc lưu cấu hình và tạo file <code>.env</code> để khởi chạy hệ thống.</p>
+            </header>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Form Inputs -->
+                <div class="main-content-card p-6 space-y-6">
+                    <div class="flex space-x-2">
+                        <input type="file" id="load-config-input" class="hidden" accept=".json" onchange="loadConfig(event)">
+                        <button class="btn btn-secondary w-full" onclick="document.getElementById('load-config-input').click()"><i class="fas fa-upload"></i>Tải lên .json</button>
+                        <button class="btn btn-secondary w-full" onclick="saveConfig()"><i class="fas fa-save"></i>Lưu lại .json</button>
+                    </div>
+                    <!-- Site Info, Passwords, Telerad... sections are the same -->
+                     <div>
+                        <h2 class="text-xl font-semibold border-b pb-3 mb-4">Thông tin Site</h2>
+                        <div class="space-y-4">
+                            <div><label for="site_uuid" class="font-medium text-gray-600 block mb-1">SITE UUID</label><input type="text" id="site_uuid" class="form-input" value="123e4567-e89b-12d3-a456-426614174000"></div>
+                            <div><label for="site_name" class="font-medium text-gray-600 block mb-1">Tên Site (SITE_NAME)</label><input type="text" id="site_name" class="form-input" value="BenhVienChoRay"></div>
+                            <div><label for="site_location" class="font-medium text-gray-600 block mb-1">Vị trí (SITE_LOCATION)</label><input type="text" id="site_location" class="form-input" value="TPHCM"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-semibold border-b pb-3 mb-4">Mật khẩu & PACS Trung tâm</h2>
+                        <div class="space-y-4">
+                            <div><label for="postgres_password" class="font-medium text-gray-600 block mb-1">Mật khẩu PostgreSQL</label><input type="password" id="postgres_password" class="form-input" value="C@resNov@Orthanc"></div>
+                            <div><label for="grafana_password" class="font-medium text-gray-600 block mb-1">Mật khẩu Admin Grafana</label><input type="password" id="grafana_password" class="form-input" value="C@resNov@Grafana"></div>
+                            <div><label for="datacenter_aet" class="font-medium text-gray-600 block mb-1">DATACENTER AET</label><input type="text" id="datacenter_aet" class="form-input" value="DATACENTER_PACS"></div>
+                            <div><label for="datacenter_ip" class="font-medium text-gray-600 block mb-1">DATACENTER IP</label><input type="text" id="datacenter_ip" class="form-input" value="192.168.1.100"></div>
+                            <div><label for="datacenter_port" class="font-medium text-gray-600 block mb-1">DATACENTER Port</label><input type="number" id="datacenter_port" class="form-input" value="11112"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-semibold border-b pb-3 mb-4">Hệ thống Telerad</h2>
+                        <div class="space-y-4">
+                            <div><label for="telerad_url" class="font-medium text-gray-600 block mb-1">TELERAD URL</label><input type="url" id="telerad_url" class="form-input" value="http://your-telerad-api-endpoint.com/api"></div>
+                            <div><label for="secret_key" class="font-medium text-gray-600 block mb-1">SECRET KEY</label><input type="password" id="secret_key" class="form-input" value="your_secret_api_key_for_telerad"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Generated Output -->
+                <div class="space-y-4">
+                     <button id="generate-btn" class="btn btn-primary w-full"><i class="fas fa-file-code"></i>Tạo nội dung file .env</button>
+                    <div class="main-content-card p-6">
+                        <h2 class="text-xl font-semibold mb-4">Nội dung <code>.env</code></h2>
+                        <div class="code-block h-[calc(100%-120px)] overflow-y-auto">
+                            <button class="copy-btn" onclick="copyToClipboard('env-output', 'Nội dung .env đã được sao chép!')"><i class="fas fa-copy"></i></button>
+                            <pre id="env-output">Nội dung sẽ được tạo ở đây sau khi bạn nhấn nút.</pre>
+                        </div>
+                    </div>
+                     <div class="main-content-card p-6">
+                        <h2 class="text-xl font-semibold mb-4">Áp dụng Cấu hình</h2>
+                        <p class="text-gray-600 mb-3">1. Sao chép nội dung trên và lưu vào file <code>.env</code> trong thư mục dự án.</p>
+                        <p class="text-gray-600">2. Chạy lệnh sau để khởi động lại hệ thống với cấu hình mới:</p>
+                        <div class="code-block mt-2">
+                           <button class="copy-btn" onclick="copyToClipboard('docker-cmd', 'Lệnh Docker đã được sao chép!')"><i class="fas fa-copy"></i></button>
+                           <pre id="docker-cmd">docker-compose up -d --force-recreate</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================= CONNECT TAB ======================= -->
+        <div id="connect-tab" class="hidden space-y-8">
+             <header>
+                <h1 class="text-3xl font-bold text-gray-800">Kiểm tra Kết nối Dịch vụ</h1>
+                <p class="text-gray-500 mt-1">Chẩn đoán trạng thái của gateway và kết nối tới PACS trung tâm.</p>
+            </header>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Local Gateway Status -->
+                <div class="main-content-card p-6">
+                    <h2 class="text-xl font-semibold mb-4">Trạng thái Gateway (orthanc-multitenant)</h2>
+                    <button class="btn btn-primary w-full mb-4" onclick="checkGatewayStatus()"><i class="fas fa-sync-alt"></i>Kiểm tra ngay</button>
+                    <div id="gateway-status-wrapper" class="p-4 border rounded-lg bg-gray-50 hidden">
+                        <div class="flex items-center justify-between">
+                            <span class="font-semibold">Trạng thái:</span>
+                            <div class="flex items-center gap-2">
+                                <span id="gateway-status-light" class="status-light offline"></span>
+                                <span id="gateway-status-text" class="font-bold">OFFLINE</span>
+                            </div>
+                        </div>
+                        <div id="gateway-details" class="mt-4 text-sm text-gray-600 space-y-2 hidden"></div>
+                    </div>
+                     <p class="text-xs text-gray-400 mt-4"><i class="fas fa-info-circle mr-1"></i>Chức năng này gọi tới `http://localhost:8042/health`. Đảm bảo bạn đang mở trang này trên cùng máy chủ với Docker hoặc đã ánh xạ cổng 8042 ra ngoài.</p>
+                </div>
+                <!-- Central PACS Status -->
+                <div class="main-content-card p-6">
+                    <h2 class="text-xl font-semibold mb-4">Kết nối PACS Trung tâm (DICOM C-ECHO)</h2>
+                    <p class="text-gray-600 mb-4">Do hạn chế của trình duyệt, không thể tự động kiểm tra DICOM. Hãy sao chép lệnh dưới đây và chạy trên một máy có cài đặt DCMTK.</p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="generateAndCopyDcmEcho()"><i class="fas fa-copy"></i></button>
+                        <pre id="dcm-echo-cmd">dcmecho [IP] [PORT]</pre>
+                    </div>
+                    <div class="mt-4 p-4 border rounded-lg bg-gray-50">
+                        <span class="font-semibold">Kết quả mong đợi:</span>
+                        <p class="text-sm text-gray-600 mt-2">Nếu thấy thông báo <code class="bg-gray-200 px-1 rounded text-xs">"I receive an A-ASSOCIATE-AC RSP"</code>, kết nối đã thành công.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================= DB TAB ======================= -->
+        <div id="db-tab" class="hidden space-y-8">
+            <header>
+                <h1 class="text-3xl font-bold text-gray-800">Trình quản lý Database</h1>
+                <p class="text-gray-500 mt-1">Công cụ hỗ trợ tạo lệnh để tương tác với cơ sở dữ liệu PostgreSQL.</p>
+            </header>
+            <div class="main-content-card p-6 space-y-6">
+                 <div>
+                    <h2 class="text-xl font-semibold text-red-600 flex items-center"><i class="fas fa-exclamation-triangle mr-3"></i>Lưu ý An toàn</h2>
+                    <p class="mt-2 text-gray-600">Công cụ này chỉ **tạo lệnh** để bạn thực thi trong terminal, không kết nối trực tiếp tới DB từ trình duyệt. Đây là phương pháp an toàn nhất.</p>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Query Builder -->
+                    <div class="space-y-4">
+                        <div>
+                            <label for="db-select" class="font-medium text-gray-600 block mb-1">1. Chọn Database</label>
+                            <select id="db-select" class="form-select">
+                                <option value="orthanc_db_main">orthanc_db_main (Chính)</option>
+                                <option value="orthanc_db_wl">orthanc_db_wl (Worklist)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="sql-query" class="font-medium text-gray-600 block mb-1">2. Viết câu lệnh SQL</label>
+                            <div class="flex space-x-1 mb-2">
+                                <button class="btn btn-secondary text-xs p-2" onclick="setSqlQuery('SELECT * FROM Patients LIMIT 10;')">SELECT Patients</button>
+                                <button class="btn btn-secondary text-xs p-2" onclick="setSqlQuery('\\dt;')">List Tables</button>
+                                <button class="btn btn-secondary text-xs p-2" onclick="setSqlQuery('\\l;')">List DBs</button>
+                            </div>
+                            <textarea id="sql-query" class="form-textarea" rows="8" placeholder="-- Ví dụ: SELECT * FROM Patients LIMIT 10;"></textarea>
+                        </div>
+                         <button class="btn btn-primary w-full" onclick="generateDbCommand()"><i class="fas fa-magic"></i>Tạo Lệnh Thực thi</button>
+                    </div>
+                    <!-- Command Output -->
+                     <div class="space-y-4">
+                         <div>
+                            <label class="font-medium text-gray-600 block mb-1">3. Sao chép và chạy lệnh trong Terminal</label>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyToClipboard('db-command-output', 'Lệnh DB đã được sao chép!')"><i class="fas fa-copy"></i></button>
+                                <pre id="db-command-output">Lệnh sẽ được tạo ở đây...</pre>
+                            </div>
+                        </div>
+                         <div>
+                            <label class="font-medium text-gray-600 block mb-1">4. Kết quả (Tùy chọn)</label>
+                             <div class="form-textarea bg-gray-50 h-48 overflow-y-auto" contenteditable="true" placeholder="Dán kết quả từ terminal vào đây để xem dễ hơn..."></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast-notification">
+        <i id="toast-icon" class="fas fa-check-circle mr-2"></i>
+        <span id="toast-message"></span>
+    </div>
+
+    <script>
+        // Global elements
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+        const toastIcon = document.getElementById('toast-icon');
+
+        const formFields = [
+            'site_uuid', 'site_name', 'site_location', 'postgres_password', 'grafana_password',
+            'datacenter_aet', 'datacenter_ip', 'datacenter_port', 'telerad_url', 'secret_key'
+        ];
+        
+        // --- Tab Switching Logic ---
+        function switchTab(tabId) {
+            const tabs = ['config', 'connect', 'db'];
+            tabs.forEach(id => {
+                document.getElementById(`${id}-tab`).classList.add('hidden');
+                document.getElementById(`btn-${id}`).classList.remove('text-blue-600');
+                document.getElementById(`btn-${id}`).classList.add('text-gray-400');
+            });
+            document.getElementById(`${tabId}-tab`).classList.remove('hidden');
+            document.getElementById(`btn-${tabId}`).classList.add('text-blue-600');
+            document.getElementById(`btn-${tabId}`).classList.remove('text-gray-400');
+        }
+
+        // --- Utility Functions ---
+        function showToast(message, type = 'success') {
+            toastMessage.textContent = message;
+            toast.className = 'toast-notification'; // Reset classes
+            toastIcon.className = 'mr-2 fas';
+
+            switch(type) {
+                case 'error':
+                    toast.classList.add('bg-red-500');
+                    toastIcon.classList.add('fa-times-circle');
+                    break;
+                case 'warning':
+                     toast.classList.add('bg-yellow-500');
+                     toastIcon.classList.add('fa-exclamation-triangle');
+                     break;
+                default:
+                    toast.classList.add('bg-green-500');
+                    toastIcon.classList.add('fa-check-circle');
+            }
+            toast.classList.add('show');
+            setTimeout(() => { toast.classList.remove('show'); }, 3000);
+        }
+
+        function copyToClipboard(elementId, message) {
+            const textToCopy = document.getElementById(elementId).innerText;
+            const textArea = document.createElement('textarea');
+            textArea.value = textToCopy;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast(message || 'Đã sao chép vào clipboard!');
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                showToast('Lỗi khi sao chép!', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // --- Config Tab Logic ---
+        document.getElementById('generate-btn').addEventListener('click', () => {
+            const values = formFields.reduce((obj, id) => {
+                obj[id] = document.getElementById(id).value;
+                return obj;
+            }, {});
+
+            const envContent = `# =================================================
+# THONG TIN DO CENTRAL ADMIN CUNG CAP
+# =================================================
+SITE_UUID="${values.site_uuid}"
+
+# =================================================
+# THONG TIN MO TA CHO SITE (Site Admin tự điền)
+# =================================================
+SITE_NAME="${values.site_name}"
+SITE_LOCATION="${values.site_location}"
+
+# =================================================
+# CAU HINH MAT KHAU VA PACS TRUNG TAM
+# =================================================
+POSTGRES_PASSWORD=${values.postgres_password}
+ORTHANC_DB_PASSWORD=${values.postgres_password}
+GRAFANA_ADMIN_PASSWORD=${values.grafana_password}
+
+# Thong tin PACS trung tam để forward dữ liệu DICOM
+DATACENTER_AET=${values.datacenter_aet}
+DATACENTER_IP=${values.datacenter_ip}
+DATACENTER_PORT=${values.datacenter_port}
+
+# =================================================
+# CAU HINH CHO PYTHON SCRIPT (Telerad System)
+# =================================================
+TELERAD_URL=${values.telerad_url}
+SECRET_KEY=${values.secret_key}
+`;
+            document.getElementById('env-output').textContent = envContent;
+            showToast('Đã tạo nội dung file .env!', 'success');
+        });
+
+        function saveConfig() {
+            const configData = formFields.reduce((obj, id) => {
+                obj[id] = document.getElementById(id).value;
+                return obj;
+            }, {});
+            const blob = new Blob([JSON.stringify(configData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pacs_config_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Đã lưu cấu hình ra file JSON!');
+        }
+
+        function loadConfig(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const configData = JSON.parse(e.target.result);
+                    formFields.forEach(id => {
+                        if (configData[id]) {
+                            document.getElementById(id).value = configData[id];
+                        }
+                    });
+                    showToast('Đã tải cấu hình thành công!');
+                } catch (error) {
+                    showToast('File cấu hình không hợp lệ!', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        // --- Connection Tab Logic ---
+        async function checkGatewayStatus() {
+            const wrapper = document.getElementById('gateway-status-wrapper');
+            const light = document.getElementById('gateway-status-light');
+            const text = document.getElementById('gateway-status-text');
+            const details = document.getElementById('gateway-details');
+            
+            wrapper.classList.remove('hidden');
+            light.className = 'status-light warning';
+            text.textContent = 'ĐANG KIỂM TRA...';
+            details.classList.add('hidden');
+
+            try {
+                // Using a proxy might be necessary for CORS in a real deployment
+                const response = await fetch('http://orthanc-multitenant:8042/systems', { mode: 'cors' });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+
+                light.className = 'status-light online';
+                text.textContent = 'ONLINE';
+                details.classList.remove('hidden');
+                details.innerHTML = `
+                    <p><strong>Thông điệp:</strong> ${data.message}</p>
+                    <p><strong>Tác vụ hoạt động:</strong> ${data.thread_pool.active_tasks} / ${data.thread_pool.max_workers}</p>
+                    <p><strong>Số lô đã xử lý:</strong> ${data.cache_statistics.batches_processed_count}</p>
+                `;
+                 showToast('Kiểm tra gateway thành công!', 'success');
+            } catch (error) {
+                console.error('Gateway check failed:', error);
+                light.className = 'status-light offline';
+                text.textContent = 'OFFLINE / LỖI';
+                details.classList.remove('hidden');
+                details.innerHTML = `<p class="text-red-600"><strong>Lỗi:</strong> Không thể kết nối tới gateway. Hãy kiểm tra xem container có đang chạy không, cổng 8042 đã được ánh xạ, và không có lỗi CORS.</p>`;
+                showToast('Không thể kết nối gateway!', 'error');
+            }
+        }
+        
+        function generateAndCopyDcmEcho() {
+            const ip = document.getElementById('datacenter_ip').value;
+            const port = document.getElementById('datacenter_port').value;
+            if (!ip || !port) {
+                showToast('Vui lòng điền IP và Port của PACS trung tâm!', 'warning');
+                return;
+            }
+            const command = `dcmecho ${ip} ${port}`;
+            const el = document.getElementById('dcm-echo-cmd');
+            el.textContent = command;
+            copyToClipboard('dcm-echo-cmd', 'Lệnh C-ECHO đã được sao chép!');
+        }
+
+        // --- DB Manager Tab Logic ---
+        function setSqlQuery(query) {
+            document.getElementById('sql-query').value = query;
+        }
+
+        function generateDbCommand() {
+            const dbName = document.getElementById('db-select').value;
+            const sqlQuery = document.getElementById('sql-query').value.trim();
+            if (!sqlQuery) {
+                showToast('Vui lòng nhập câu lệnh SQL!', 'warning');
+                return;
+            }
+            // Sanitize query for command line embedding
+            const sanitizedQuery = sqlQuery.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+            
+            const command = `docker exec -i orthanc-postgres-db psql -U orthanc -d ${dbName} <<< "${sanitizedQuery}"`;
+            document.getElementById('db-command-output').textContent = command;
+            showToast('Đã tạo lệnh DB!', 'success');
+        }
+
+        // --- Initialize ---
+        switchTab('config');
+    </script>
+</body>
+</html>
+

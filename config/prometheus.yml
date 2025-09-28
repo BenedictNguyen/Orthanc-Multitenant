@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "orthanc"
+    metrics_path: /tools/metrics-prometheus
+    static_configs:
+      - targets: ["orthanc-multitenant:8042"]
+        labels:
+          site_uuid: "${SITE_UUID}"
+          site_name: "${SITE_NAME}"
+          site_location: "${SITE_LOCATION}"
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]

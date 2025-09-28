@@ -1,0 +1,74 @@
+{
+  "Name": "OrthancMultiTenant",
+  "LoadFromEnvironment": true,
+
+  "StorageDirectory": "/var/lib/orthanc/db",
+  "IndexDirectory": "/var/lib/orthanc/db",
+
+  "PostgreSQL": {
+    "EnableIndex": true,
+    "EnableStorage": true,
+    "Host": "postgres",
+    "Port": 5432,
+    "Database": "orthanc_db_main",
+    "Username": "orthanc",
+    "Password": "${ORTHANC_DB_PASSWORD}",
+    "Lock": true
+  },
+
+  "DicomAet": "ORTHANC_MT",
+  "DicomPort": 4242,
+  "HttpPort": 8042,
+
+  "AuthenticationEnabled": false,
+  "RegisteredUsers": {},
+
+  "DicomAlwaysAllowEcho": true,
+  "DicomAlwaysAllowStore": true,
+
+  "HttpAllowedOrigins": ["*"],
+  "HttpAllowedMethods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  "HttpAllowedHeaders": ["*"],
+  "HttpTlsEnabled": false,
+  "HttpsCertificate": "",
+  "HttpsKey": "",
+  "HttpTimeout": 60,
+  "HttpRequestTimeout": 30,
+
+  "LuaExecutionEnabled": true,
+  "LuaScripts": [
+    "/etc/orthanc/autoforward.lua"
+  ],
+  
+  "DicomModalities": {
+    "DATACENTER_PACS": ["01RIS", "125.212.210.165", 104]
+  },
+
+  "MetricsEnabled": true,
+  "StorageCompression": true,
+  "MaximumStorageMode": "Recycle",
+  "MaximumStorageSize": 50000,
+
+  "ConcurrentJobs": 16,
+  "DicomThreadsCount": 16,
+  "SeriesStableDelay": 1,
+
+  "Plugins": [
+    "/usr/share/orthanc/plugins"
+  ],
+  
+  "PythonScript": "/usr/share/orthanc/plugins/python-script.py",
+
+  "DicomWeb": {
+    "Enable": true,
+    "Root": "/dicom-web/",
+    "EnableWado": true,
+    "EnableQido": true,
+    "EnableStow": true
+  },
+
+  "OrthancExplorer2": {
+    "Enable": true,
+    "IsDefault": true
+  }
+}

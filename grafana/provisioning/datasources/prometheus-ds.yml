@@ -1,0 +1,9 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus-Orthanc  # Tên nguồn dữ liệu sẽ hiển thị trong Grafana
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://prometheus:9090  # Địa chỉ của Prometheus
+    isDefault: true
