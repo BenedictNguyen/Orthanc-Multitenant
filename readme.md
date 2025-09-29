@@ -1,4 +1,4 @@
-# Orthanc DICOM Gateway V5.7
+# Orthanc DICOM Gateway
 
 ## 1\. Giới thiệu
 
