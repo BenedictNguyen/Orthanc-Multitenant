@@ -496,50 +496,33 @@ def get_thread_pool_status():
 
 
 def get_eorders() -> list[dict]:
-    """Get clinic e-orders from Telerad system"""
     url = os.getenv("TELERAD_URL")
-    api_key = os.getenv("SECRET_KEY")
+    api_key = os.getenv("TELERAD_API_KEY")  # rõ ràng, không lẫn với SECRET_KEY
     logger.info(f"Get EOrder from Telerad System: {url}")
     try:
         start = datetime.now() - timedelta(hours=12)
         end = datetime.now() + timedelta(hours=12)
         filters = [
             "filter=status||$in||SCHEDULED,NEED_RESEND,CANCELLED",
-            f"filter=updatedDate||$lte||{end.isoformat()}",
-            f"filter=updatedDate||$gte||{start.isoformat()}",
             "sort=updatedDate||DESC",
-            "select=dicomWorklist",
-            "select=studyInstanceUID",
-            "select=accessionNumber",
-            "select=status",
-            "select=updatedDate",
-            "select=referralHospital",
-            "select=referralPhysician",
-            "select=referralDepartment",
-            "select=scheduledDate",
-            "join=device",
-            "join=modality.masterModality",
-            "join=procedure",
-            "join=patient",
-            "join=clinic",
             "page=1",
             "limit=1000",
         ]
-        headers = {"Content-Type": "application/json", "x-api-key": api_key}
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+        }
         response = requests.get(
             f"{url}/e-orders/clinic-e-orders/?{'&'.join(filters)}",
             headers=headers,
-            timeout=2,
+            timeout=10,
         )
-        response.raise_for_status()  # Raise an exception for non-2xx responses
-        data = response.json()
-        orders = data.get("data", [])
-        return orders
+        response.raise_for_status()
+        return response.json().get("data", [])
     except requests.exceptions.RequestException as req_err:
         orthanc.LogWarning(f"HTTP request failed: {req_err}")
     except Exception as e:
-        orthanc.LogWarning(f"An unexpected error occurred: {e}")
-
+        orthanc.LogWarning(f"Unexpected error: {e}")
 
 def get_pacs_destination(modality: str) -> str:
     global pacs_destination_map, pacs_aet_map
@@ -1698,10 +1681,25 @@ def on_create_worklist(uri, body):
     auto_create_worklist()
     return json.dumps({"status": "ok", "msg": "Worklist created"})
 
-def on_resend_study(uri, body):
-    payload = parse_request_payload(body)
-    resend_study(payload.get("StudyInstanceUID",""), payload.get("AccessionNumber",""))
-    return json.dumps({"status": "ok", "msg": "Resend triggered"})
+import json
+def on_resend_study(output, uri, **request):
+    orthanc.LogInfo("Resend study API called")
+    try:
+        result = {
+            "status": "ok",
+            "message": "Resend study executed successfully"
+        }
+        orthanc.LogInfo("Returning success response")
+        return (200, json.dumps(result), "application/json")
+    except Exception as e:
+        orthanc.LogError(f"Error in resend-study: {e}")
+        result = {
+            "status": "error",
+            "message": str(e)
+        }
+        return (500, json.dumps(result), "application/json")
+
+orthanc.RegisterRestCallback("/ris/resend-study", on_resend_study)
 
 def on_cleanup(uri, body):
     delete_old_studies()

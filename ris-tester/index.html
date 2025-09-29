@@ -857,7 +857,8 @@ async function pingOrthanc(path){
 }
 
 function callService(endpoint) {
-  const url = orthancBase + endpoint;
+  const base = document.getElementById('orthanc-base').value.trim();
+  const url = base + endpoint;
   fetch(url, { method: 'POST' })
     .then(r => r.json())
     .then(j => {

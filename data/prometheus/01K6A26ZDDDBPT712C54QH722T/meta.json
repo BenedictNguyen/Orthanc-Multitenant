@@ -1,0 +1,17 @@
+{
+	"ulid": "01K6A26ZDDDBPT712C54QH722T",
+	"minTime": 1759111200000,
+	"maxTime": 1759118400000,
+	"stats": {
+		"numSamples": 222385,
+		"numSeries": 484,
+		"numChunks": 1903
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01K6A26ZDDDBPT712C54QH722T"
+		]
+	},
+	"version": 1
+}

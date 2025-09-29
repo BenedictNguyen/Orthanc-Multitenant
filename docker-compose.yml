@@ -29,7 +29,7 @@ services:
   # SINGLE ORTHANC INSTANCE - Multi-tenant
   # ======================================
   orthanc-multitenant:
-    image: orthancteam/orthanc:latest-full
+    build: .
     container_name: orthanc-multitenant
     hostname: orthanc-multitenant
     ports:
@@ -67,7 +67,7 @@ services:
       ORTHANC__STORAGE_COMPRESSION: "true"
       ORTHANC__JPEG_QUALITY: 90
       TELERAD_URL: https://telerad-api.caresnova.ai/api
-      SeCRET_KEY: w4QtgbMk9Wa36YvyvtUEpEqtz8P58GU5
+      TELERAD_API_KEY: w4QtgbMk9Wa36YvyvtUEpEqtz8P58GU5
     depends_on:
       postgres:
         condition: service_healthy

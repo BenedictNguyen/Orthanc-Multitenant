@@ -1,0 +1,17 @@
+{
+	"ulid": "01K69W75PJD2K7P7D264A6B6SA",
+	"minTime": 1759109892930,
+	"maxTime": 1759111200000,
+	"stats": {
+		"numSamples": 39758,
+		"numSeries": 484,
+		"numChunks": 484
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01K69W75PJD2K7P7D264A6B6SA"
+		]
+	},
+	"version": 1
+}
