@@ -1,0 +1,5 @@
+global:
+  scrape_interval: 15s
+  external_labels:
+    site_name: ${SITE_NAME}
+    site_location: ${SITE_LOCATION}

@@ -1,0 +1,98 @@
+version: "3.9"
+services:
+  # ============================
+  # DATABASE POSTGRESQL - Shared
+  # ============================
+  postgres:
+    image: postgres:15-alpine
+    container_name: orthanc-postgres-db
+    hostname: postgres
+    environment:
+      POSTGRES_USER: orthanc
+      POSTGRES_PASSWORD: ${ORTHANC_DB_PASSWORD:-orthanc}
+      TZ: Asia/Ho_Chi_Minh
+    command: ["postgres", "-c", "max_connections=500", "-c", "shared_buffers=256MB"]
+    volumes:
+      - ./data/postgres-db:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orthanc -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - pacs-net
+    ports:
+      - "5432:5432"
+
+  # ======================================
+  # ORTHANC INSTANCE - Multi-tenant (Modalities)
+  # ======================================
+  orthanc-multitenant:
+    build: .
+    container_name: orthanc-multitenant
+    hostname: orthanc-multitenant
+    ports:
+      - "8042:8042"
+      - "4243:4243"
+      - "4244:4244"
+      - "4245:4245"
+      - "4246:4246"
+      - "4247:4247"
+      - "4248:4248"
+    volumes:
+      - ./config/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - ./data/storage-main:/var/lib/orthanc/db
+      - ./plugins:/usr/share/orthanc/plugins
+      - ./lua:/etc/orthanc/lua:ro
+      - ./lua/autoforward.lua:/etc/orthanc/autoforward.lua:ro
+      - ./data/worklists:/var/lib/orthanc/worklists
+      - ./plugins/gw_plugin.py:/usr/share/orthanc/plugins/gw_plugin.py:ro
+      - E:\ProjectWorkspace\Job\GW\Orthanc-gw-v5.8 - copy\plugins:/home/oscar/orthanc-plugins
+    environment:
+      ORTHANC__NAME: "ORTHANC_MULTITENANT"
+      ORTHANC__DICOM_AET: "ORTHANC_MT"
+      ORTHANC__POSTGRESQL__ENABLE: "true"
+      ORTHANC__POSTGRESQL__HOST: "postgres"
+      ORTHANC__POSTGRESQL__PORT: "5432"
+      ORTHANC__POSTGRESQL__DATABASE: "orthanc_db_main"
+      ORTHANC__POSTGRESQL__USER: "orthanc"
+      ORTHANC__POSTGRESQL__PASSWORD: "C@resNov@"
+      ORTHANC__MONITORING__ENABLED: "true"
+      ORTHANC__SERIES_STABLE_DELAY: 1
+      DATACENTER_AET: ${DATACENTER_AET}
+      DATACENTER_IP: ${DATACENTER_IP}
+      DATACENTER_PORT: ${DATACENTER_PORT}
+      ORTHANC__HTTP_TLS_ENABLED: "false"
+      ORTHANC__HTTP_AUTHENTICATION_ENABLED: "false"
+      ORTHANC__LUA_EXECUTION_ENABLED: "true"
+      ORTHANC__STORAGE_COMPRESSION: "true"
+      ORTHANC__JPEG_QUALITY: 90
+      TELERAD_URL: https://telerad-api.caresnova.ai/api
+      SECRET_KEY: w4QtgbMk9Wa36YvyvtUEpEqtz8P58GU5
+      SKG_API_NEW_STUDY: "http://host.docker.internal:5000/api/v1/new-study"
+      SKG_API_STABLE_STUDY: "http://host.docker.internal:5000/api/v1/stable-study"
+      CLEANUP_INTERVAL_HOURS: 6
+      DELETE_OLDER_THAN_DAYS: 0
+      ENABLE_TELERAD: true
+      PYTHONIOENCODING: utf-8
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pacs-net
+
+# ============================
+# VOLUMES & NETWORKS
+# ============================
+volumes:
+  grafana-storage: {}
+
+networks:
+  pacs-net:
+    driver: bridge

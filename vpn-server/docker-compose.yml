@@ -1,0 +1,20 @@
+services:
+  wireguard:
+    image: linuxserver/wireguard
+    container_name: vpn-central-server
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./config:/config
+      - /lib/modules:/lib/modules
+    ports:
+      # Port 51820/udp la port chuan cua WireGuard
+      - "51820:51820/udp"
+    sysctls:
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
