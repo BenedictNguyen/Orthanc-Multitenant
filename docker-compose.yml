@@ -87,6 +87,48 @@ services:
     networks:
       - pacs-net
 
+
+  # ======================================
+  # ORTHANC INSTANCE - Worklist Server
+  # ======================================
+  orthanc-worklist:
+    image: orthancteam/orthanc:latest
+    container_name: orthanc-worklist
+    hostname: orthanc-worklist
+    ports:
+      - "8043:8042"         # HTTP port
+      - "4249:4242"         # DICOM port (không trùng các cổng khác)
+    volumes:
+      - ./config/orthanc-wl.json:/etc/orthanc/orthanc.json:ro
+      - ./data/storage-worklist:/var/lib/orthanc/db
+      - ./data/worklists:/var/lib/orthanc/worklists
+      - ./plugins:/usr/share/orthanc/plugins
+      - ./lua:/etc/orthanc/lua:ro
+      - ./plugins/worklist_plugin.py:/usr/share/orthanc/plugins/worklist_plugin.py:ro
+    environment:
+      ORTHANC__NAME: "ORTHANC_WORKLIST"
+      ORTHANC__DICOM_AET: "ORTHANC_WL"
+      ORTHANC__POSTGRESQL__ENABLE: "true"
+      ORTHANC__POSTGRESQL__HOST: "postgres"
+      ORTHANC__POSTGRESQL__PORT: "5432"
+      ORTHANC__POSTGRESQL__DATABASE: "orthanc_db_wl"
+      ORTHANC__POSTGRESQL__USER: "orthanc"
+      ORTHANC__POSTGRESQL__PASSWORD: "C@resNov@"
+      ORTHANC__HTTP_TLS_ENABLED: "false"
+      ORTHANC__HTTP_AUTHENTICATION_ENABLED: "false"
+      ORTHANC__LUA_EXECUTION_ENABLED: "true"
+      ORTHANC__STORAGE_COMPRESSION: "true"
+      ORTHANC__JPEG_QUALITY: 90
+      PYTHONIOENCODING: utf-8
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pacs-net
+
 # ============================
 # VOLUMES & NETWORKS
 # ============================

@@ -18,5 +18,9 @@ def stable_study():
     print(json.dumps(data, indent=2))
     return jsonify({"message": "Stable study received", "data": data}), 200
 
+@app.route("/api/v1/health", methods=["GET"])
+def health_check():
+    return {"status": "ok", "service": "RIS Flask API"}, 200
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

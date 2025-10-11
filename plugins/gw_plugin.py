@@ -14,8 +14,8 @@ SKG_API_NEW_STUDY = os.getenv("SKG_API_NEW_STUDY", "http://host.docker.internal:
 SKG_API_STABLE_STUDY = os.getenv("SKG_API_STABLE_STUDY", "http://host.docker.internal:5000/api/v1/stable-study")
 DATACENTER_PACS = os.getenv("DATACENTER_PACS", "DATACENTER_PACS")
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "5"))
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
-MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "7"))
 
 # Telerad integration
 ENABLE_TELERAD = os.getenv("ENABLE_TELERAD", "false").lower() == "true"
@@ -24,7 +24,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "")
 
 # Woklist config
 WORKLIST_FOLDER = os.getenv("WORKLIST_DATABASE", "/var/lib/orthanc/worklists")
-WORKLIST_PULL_INTERVAL = int(os.getenv("WORKLIST_PULL_INTERVAL", "3"))
+WORKLIST_PULL_INTERVAL = int(os.getenv("WORKLIST_PULL_INTERVAL", "5"))
 
 # Interval cleanup (in hours)
 CLEANUP_INTERVAL_HOURS = float(os.getenv("CLEANUP_INTERVAL_HOURS", "CLEANUP_INTERVAL_HOURS"))
@@ -225,7 +225,7 @@ def delete_worklist(accession_number):
             os.remove(path)
             log(f"[WORKLIST][INFO] Deleted: {accession_number}")
         else:
-            log(f"[WORKLIST][DEBUG] Already removed: {accession_number}")
+            log(f"")
     except Exception as e:
         log(f"[WORKLIST][ERROR] Delete failed for {accession_number}: {str(e)}")
 
@@ -467,6 +467,7 @@ def OnStableStudy(study_id):
             "event_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         requests.post(SKG_API_STABLE_STUDY, json=payload, timeout=HTTP_TIMEOUT)
+        delete_worklist(accession_number)
         update_telerad_eorders(accession_number, study_uid, "COMPLETED", count_series, count_instances)
         forward_study(study_id, DATACENTER_PACS)
     except Exception as e:

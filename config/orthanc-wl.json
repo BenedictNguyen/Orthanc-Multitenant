@@ -1,45 +1,29 @@
 {
-  "Name": "OrthancWorklist",
-  "LoadFromEnvironment": true,
-
-  "StorageDirectory": "/var/lib/orthanc/db",
-  "IndexDirectory": "/var/lib/orthanc/db",
-
-  "PostgreSQL": {
-    "EnableIndex": true,
-    "EnableStorage": true,
-    "Host": "postgres",
-    "Port": 5432,
-    "Database": "orthanc_db_wl",
-    "Username": "orthanc",
-    "Password": "${ORTHANC_DB_PASSWORD}",
-    "Lock": true
-  },
-
+  "Name": "Orthanc Worklist",
   "DicomAet": "ORTHANC_WL",
   "DicomPort": 4242,
-  "HttpPort": 8041,
+  "HttpPort": 8042,
   "HttpServerEnabled": true,
-
+  "DicomServerEnabled": true,
   "AuthenticationEnabled": false,
-  "RegisteredUsers": {},
-
-  "DicomAlwaysAllowEcho": true,
-  "DicomAlwaysAllowStore": false,
-
-  "LuaExecutionEnabled": true,
-
+  "StorageDirectory": "/var/lib/orthanc/db",
+  "WorklistsDirectory": "/var/lib/orthanc/worklists",
   "Plugins": [
     "/usr/share/orthanc/plugins"
   ],
-
-  "Worklists": {
+  "PostgreSQL": {
     "Enable": true,
-    "Database": "/var/lib/orthanc/worklists"
+    "Host": "postgres",
+    "Port": 5432,
+    "Database": "orthanc_db_worklist",
+    "Username": "orthanc",
+    "Password": "C@resNov@"
   },
-
-  "OrthancExplorer2": {
+  "WorklistsWatcher": {
     "Enable": true,
-    "IsDefault": true
-  }
+    "Directory": "/var/lib/orthanc/worklists",
+    "PollingInterval": 5
+  },
+  "StorageCompression": true,
+  "LogLevel": "info"
 }
