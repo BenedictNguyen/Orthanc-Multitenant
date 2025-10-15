@@ -5,13 +5,13 @@ import os
 import datetime
 import time
 import threading
+import logging
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import generate_uid
 from urllib.parse import quote
+from logging.handlers import RotatingFileHandler
 
 # ===================== CONFIG =====================
-SKG_API_NEW_STUDY = os.getenv("SKG_API_NEW_STUDY", "http://host.docker.internal:5000/api/v1/new-study")
-SKG_API_STABLE_STUDY = os.getenv("SKG_API_STABLE_STUDY", "http://host.docker.internal:5000/api/v1/stable-study")
 DATACENTER_PACS = os.getenv("DATACENTER_PACS", "DATACENTER_PACS")
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "5"))
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
@@ -31,14 +31,42 @@ CLEANUP_INTERVAL_HOURS = float(os.getenv("CLEANUP_INTERVAL_HOURS", "CLEANUP_INTE
 DELETE_OLDER_THAN_DAYS = int(os.getenv("DELETE_OLDER_THAN_DAYS", "DELETE_OLDER_THAN_DAYS"))
 
 # Health check log file and interval (in minutes)
-HEALTH_LOG_FILE = os.getenv("HEALTH_LOG_FILE", "/home/oscar/orthanc-plugins/health.log")
+HEALTH_LOG_FILE = os.getenv("HEALTH_LOG_FILE", "/var/log/orthanc/health.log")
 HEALTH_INTERVAL_MINUTES = float(os.getenv("HEALTH_INTERVAL_MINUTES", "3"))
 
-# ===================== CONFIG =====================
-def log(msg):
-    print(f"[GW_PLUGIN] {msg}", flush=True)
-    orthanc.LogWarning(f"[GW_PLUGIN] {msg}")
+# Detail log file
+DETAIL_LOG_FILE = os.getenv("DETAIL_LOG_FILE", "/var/log/orthanc/detail.log")
+os.makedirs(os.path.dirname(DETAIL_LOG_FILE), exist_ok=True)
+# ===================== LOGGING FUNCTIONS =====================
+detail_handler = RotatingFileHandler(
+    DETAIL_LOG_FILE,
+    maxBytes=1*1024*1024,
+    backupCount=2,
+    encoding='utf-8'
+)
+detail_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s'))
 
+detail_logger = logging.getLogger('detail')
+detail_logger.setLevel(logging.DEBUG)
+detail_logger.addHandler(detail_handler)
+
+def log(msg, level="INFO", detail_only=False):
+    """
+    Log message to detail file with rotation
+    level: INFO, WARNING, ERROR
+    """
+    if level == "ERROR":
+        detail_logger.error(msg)
+    elif level == "WARNING":
+        detail_logger.warning(msg)
+    else:
+        detail_logger.info(msg)
+
+def log_detail(msg):
+    """Log only to detail file"""
+    detail_logger.debug(msg)
+
+# ===================== CONFIG =====================
 def no_special_characters(s: str):
     if s is None:
         return ""
@@ -65,10 +93,12 @@ def forward_chunk(instances, target, retry=MAX_RETRIES):
     for attempt in range(1, retry + 1):
         try:
             orthanc.RestApiPost(f"/modalities/{target}/store", json.dumps(instances))
-            log(f"[FORWARD] Sent {len(instances)} instances to {target}")
+            log_detail(f"[FORWARD] Sent {len(instances)} instances to {target} (attempt {attempt})")
             return True
         except Exception as e:
-            log(f"[FORWARD] Retry {attempt}/{retry} failed ({len(instances)} instances): {str(e)}")
+            log_detail(f"[FORWARD] Retry {attempt}/{retry} failed ({len(instances)} instances): {str(e)}")
+            if attempt == retry:
+                log(f"[FORWARD] Failed to send {len(instances)} instances to {target}: {str(e)}", level="ERROR")
             time.sleep(2 ** attempt)
     return False
 
@@ -79,17 +109,19 @@ def forward_series(series_id, target):
         series_json = json.loads(series_raw)
         instances = series_json.get("Instances", [])
         if not instances:
-            log(f"[FORWARD] Series {series_id} has no instances, skipping")
+            log_detail(f"[FORWARD] Series {series_id} has no instances, skipping")
             return
+        
+        log_detail(f"[FORWARD] Series {series_id}: {len(instances)} instances")
         for i in range(0, len(instances), CHUNK_SIZE):
             chunk = instances[i:i + CHUNK_SIZE]
             ok = forward_chunk(chunk, target)
             if not ok:
-                log(f"[FORWARD] Series {series_id}, chunk {i // CHUNK_SIZE + 1} failed permanently")
+                log(f"[FORWARD] Series {series_id} failed at chunk {i // CHUNK_SIZE + 1}", level="ERROR")
                 return
-        log(f"[FORWARD] Series {series_id} forwarded successfully ({len(instances)} instances)")
+        log_detail(f"[FORWARD] Series {series_id} forwarded successfully")
     except Exception as e:
-        log(f"[FORWARD] Error forwarding series {series_id}: {str(e)}")
+        log(f"[FORWARD] Error forwarding series {series_id}: {str(e)}", level="ERROR")
 
 
 def forward_study(study_id, target):
@@ -97,20 +129,21 @@ def forward_study(study_id, target):
         study_raw = orthanc.RestApiGet(f"/studies/{study_id}")
         study_json = json.loads(study_raw)
         series_ids = study_json.get("Series", [])
-        log(f"[FORWARD] Forwarding study {study_id} to {target}, {len(series_ids)} series")
+        log_detail(f"[FORWARD] Study {study_id}: {len(series_ids)} series to {target}")
         for sid in series_ids:
             forward_series(sid, target)
+        log(f"[FORWARD] Study {study_id} forwarded to {target}")
     except Exception as e:
-        log(f"[FORWARD] Error forwarding study {study_id}: {str(e)}")
+        log(f"[FORWARD] Error forwarding study {study_id}: {str(e)}", level="ERROR")
 
 
 # ===================== TELERAD INTEGRATION =====================
 def update_telerad_eorders(accession, study_uid, status, count_series=0, count_instances=0, extras=None):
     if not ENABLE_TELERAD:
-        log("[TELERAD] Disabled, skipping update.")
+        log_detail("[TELERAD] Disabled, skipping update")
         return
     if not TELERAD_URL or not SECRET_KEY:
-        log("[TELERAD] Missing TELERAD_URL or SECRET_KEY.")
+        log("[TELERAD] Missing TELERAD_URL or SECRET_KEY", level="ERROR")
         return
 
     valid_statuses = {
@@ -120,7 +153,7 @@ def update_telerad_eorders(accession, study_uid, status, count_series=0, count_i
         "UNUSUAL_UPLOADING", "UNUSUAL_UPLOAD_FAILED"
     }
     if status not in valid_statuses:
-        log(f"[TELERAD] Invalid status '{status}', skipping update.")
+        log(f"[TELERAD] Invalid status '{status}'", level="WARNING")
         return
 
     payload = {
@@ -137,17 +170,20 @@ def update_telerad_eorders(accession, study_uid, status, count_series=0, count_i
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            log(f"[TELERAD] Sending status '{status}' (try {attempt}/{MAX_RETRIES})...")
+            log_detail(f"[TELERAD] Sending status '{status}' for {accession} (attempt {attempt})")
             r = requests.post(f"{TELERAD_URL}/e-orders/update-status", json=payload, headers=headers, timeout=10)
             if 200 <= r.status_code < 300:
-                log(f"[TELERAD] Success: HTTP {r.status_code}")
+                log_detail(f"[TELERAD] Success: {accession} -> {status}")
                 return
             else:
-                log(f"[TELERAD] Failed (HTTP {r.status_code}): {r.text}")
+                log_detail(f"[TELERAD] HTTP {r.status_code}: {r.text}")
+                if attempt == MAX_RETRIES:
+                    log(f"[TELERAD] Failed status '{status}' for {accession}: HTTP {r.status_code}", level="ERROR")
         except Exception as e:
-            log(f"[TELERAD] Error: {str(e)}")
+            log_detail(f"[TELERAD] Attempt {attempt} error: {str(e)}")
+            if attempt == MAX_RETRIES:
+                log(f"[TELERAD] Error updating {accession}: {str(e)}", level="ERROR")
         time.sleep(2 ** attempt)
-    log(f"[TELERAD] Max retry reached for study {study_uid}")
 
 
 # ===================== WORKLIST SYNC ======================
@@ -155,7 +191,8 @@ def create_dicom_worklist(order):
     ds = Dataset()
 
     # --- Thông tin bệnh nhân ---
-    ds.PatientID = str(order.get("patient", {}).get("id", "UNKNOWN")).split(".")[-1]
+    patient_id = order.get("patientId", "UNKNOWN")
+    ds.PatientID = str(patient_id).split(".")[-1]
     ds.PatientName = str(order.get("patient", {}).get("fullName", "UNKNOWN"))
     ds.PatientSex = convert_dicom_gender(order.get("patient", {}).get("gender", "O"))
     dob = order.get("patient", {}).get("dob", "")
@@ -177,62 +214,70 @@ def create_dicom_worklist(order):
     ds.InstitutionName = str(order.get("clinic", {}).get("clinicName", ""))
     ds.InstitutionalDepartmentName = ds.InstitutionName
 
-    # --- Scheduled Step Sequence ---
+    # --- Scheduled Procedure Step Sequence ---
     step_ds = Dataset()
     step_ds.Modality = modality
-    step_ds.ScheduledStationAETitle = "ORTHANC_MT"
+    step_ds.ScheduledStationAETitle = "ORTHANC_WL"
+    step_ds.ScheduledStationName = "STATION1"
+    step_ds.ScheduledProcedureStepID = f"SPS_{ds.AccessionNumber or generate_uid()}"
+    step_ds.ScheduledProcedureStepDescription = ds.StudyDescription or "Imaging Procedure"
+
+    # Thời gian thực hiện
     scheduled_date = order.get("scheduledDate", "")
     date, time_ = convert_dicom_datetime(scheduled_date)
     step_ds.ScheduledProcedureStepStartDate = date or datetime.datetime.now().strftime("%Y%m%d")
     step_ds.ScheduledProcedureStepStartTime = time_ or datetime.datetime.now().strftime("%H%M%S")
+    step_ds.ScheduledPerformingPhysicianName = str(order.get("referralPhysician", "Doctor"))
+    step_ds.ScheduledProcedureStepLocation = "Room1"
     step_ds.ScheduledProcedureStepStatus = "SCHEDULED"
-    step_ds.ScheduledProcedureStepID = f"STP{ds.AccessionNumber}"
-    step_ds.ScheduledPerformingPhysicianName = str(order.get("referralPhysician", ""))
-    step_ds.ScheduledProcedureStepDescription = ds.StudyDescription
 
+    # --- Thêm Sequence bắt buộc ---
     ds.ScheduledProcedureStepSequence = [step_ds]
+
+    # --- Các tag bổ sung hữu ích ---
+    ds.RequestingPhysician = ds.ReferringPhysicianName
+    ds.RequestedProcedureDescription = ds.StudyDescription
+    ds.RequestedProcedureID = f"RP_{ds.AccessionNumber or generate_uid()}"
+    ds.RequestedProcedurePriority = "ROUTINE"
+    ds.RequestedProcedureLocation = "Radiology"
+    ds.RequestedProcedureComments = "Auto-generated by Orthanc GW Plugin"
 
     # --- File Meta ---
     file_meta = Dataset()
-    file_meta.MediaStorageSOPClassUID = generate_uid()
+    file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.31"
     file_meta.MediaStorageSOPInstanceUID = generate_uid()
     file_meta.ImplementationClassUID = generate_uid()
 
     # --- Lưu file ---
     os.makedirs(WORKLIST_FOLDER, exist_ok=True)
-    acc_clean = no_special_characters(ds.AccessionNumber)
+    acc_clean = no_special_characters(ds.AccessionNumber or generate_uid())
     filename = os.path.join(WORKLIST_FOLDER, f"{acc_clean}.wl")
-
-    if os.path.exists(filename):
-            # log(f"[WORKLIST] Skip existing: {filename}")
-            return
 
     file_ds = FileDataset(filename, {}, file_meta=file_meta, preamble=b"\0" * 128)
     file_ds.update(ds)
     file_ds.is_little_endian = True
     file_ds.is_implicit_VR = True
     file_ds.save_as(filename, write_like_original=False)
-
-    log(f"[WORKLIST] Created: {filename}")
-
+    
+    log_detail(f"[WORKLIST] Created: {ds.AccessionNumber} | Patient: {ds.PatientName} | Modality: {modality}")
+    log(f"[WORKLIST] Created: {ds.AccessionNumber}")
 
 def delete_worklist(accession_number):
     try:
         acc_clean = no_special_characters(accession_number)
         path = os.path.join(WORKLIST_FOLDER, f"{acc_clean}.wl")
-
         if os.path.exists(path):
             os.remove(path)
-            log(f"[WORKLIST][INFO] Deleted: {accession_number}")
+            log(f"[WORKLIST] Deleted: {accession_number}")
         else:
-            log(f"")
+            log_detail(f"[WORKLIST] Not found for deletion: {accession_number}")
     except Exception as e:
-        log(f"[WORKLIST][ERROR] Delete failed for {accession_number}: {str(e)}")
+        log(f"[WORKLIST] Delete failed for {accession_number}: {str(e)}", level="ERROR")
 
 def sync_worklist():
-    """Đồng bộ định kỳ với Telerad eOrders (kèm cơ chế NEED_RESEND)"""
+    """Đồng bộ định kỳ với Telerad eOrders"""
     if not ENABLE_TELERAD:
-        log("[WORKLIST] Disabled")
+        log_detail("[WORKLIST] Sync disabled (ENABLE_TELERAD=false)")
         return
 
     while True:
@@ -242,19 +287,17 @@ def sync_worklist():
             data = []
 
             for st in statuses:
-                # Encode từng filter eq
                 filter_str = quote(f"status||$eq||{st}")
                 url = f"{TELERAD_URL}/e-orders/clinic-e-orders?filter={filter_str}&limit=500"
-
-                log(f"[WORKLIST] Fetching {st} from {url}")
+                log_detail(f"[WORKLIST] Fetching {st} from API")
                 r = requests.get(url, headers=headers, timeout=10)
 
                 if r.status_code == 200:
                     part = r.json().get("data", [])
                     data.extend(part)
-                    log(f"[WORKLIST] Got {len(part)} {st} orders")
+                    log_detail(f"[WORKLIST] Got {len(part)} {st} orders")
                 else:
-                    log(f"[WORKLIST] HTTP {r.status_code} for {st}: {r.text}")
+                    log(f"[WORKLIST] HTTP {r.status_code} for {st}", level="WARNING")
 
             # Xử lý dữ liệu tổng hợp
             for order in data:
@@ -270,7 +313,7 @@ def sync_worklist():
                     delete_worklist(acc)
                 
                 elif status == "NEED_RESEND":
-                    log(f"[WORKLIST] NEED_RESEND detected for {acc}")
+                    log(f"[RESEND] Processing {acc}")
                     try:
                         # --- Kiểm tra Orthanc có study chưa ---
                         found_study = None
@@ -283,7 +326,7 @@ def sync_worklist():
 
                         # --- Nếu chưa có, pull từ PACS ---
                         if not found_study:
-                            log(f"[RESEND] Study {acc} not found locally, pulling from PACS {DATACENTER_PACS}")
+                            log(f"[RESEND] Pulling {acc} from PACS {DATACENTER_PACS}")
                             query_payload = {
                                 "Level": "STUDY",
                                 "Query": {"AccessionNumber": acc}
@@ -291,9 +334,10 @@ def sync_worklist():
                             orthanc.RestApiPost(f"/modalities/{DATACENTER_PACS}/query", json.dumps(query_payload))
                             orthanc.RestApiPost(f"/modalities/{DATACENTER_PACS}/retrieve", json.dumps(query_payload))
 
-                            # Đợi PACS gửi ảnh về (tối đa 20 giây)
-                            for _ in range(20):
+                            # Đợi PACS gửi ảnh về
+                            for wait_count in range(20):
                                 time.sleep(1)
+                                log_detail(f"[RESEND] Waiting for {acc} ({wait_count + 1}/20)")
                                 studies = json.loads(orthanc.RestApiGet("/studies"))
                                 for s in studies:
                                     info = json.loads(orthanc.RestApiGet(f"/studies/{s}"))
@@ -305,11 +349,10 @@ def sync_worklist():
 
                         # --- Nếu vẫn không thấy ---
                         if not found_study:
-                            log(f"[RESEND] Failed to pull study {acc} from PACS (not found after retry).")
+                            log(f"[RESEND] Study {acc} not found after pull", level="ERROR")
                             continue
 
                         # --- Gửi lại study tới Telerad ---
-                        log(f"[RESEND] Forwarding study {found_study} (Acc={acc}) to Telerad...")
                         forward_study(found_study, DATACENTER_PACS)
 
                         # --- Cập nhật trạng thái lên Telerad ---
@@ -321,13 +364,13 @@ def sync_worklist():
                         count_instances = int(stats_json.get("CountInstances", 0))
 
                         update_telerad_eorders(acc, study_uid, "COMPLETED", count_series, count_instances)
-                        log(f"[RESEND] Resent {acc} successfully")
+                        log(f"[RESEND] Completed {acc}")
                     except Exception as e:
-                        log(f"[RESEND] Error while resending {acc}: {e}")
+                        log(f"[RESEND] Error {acc}: {e}", level="ERROR")
 
-            # log(f"[WORKLIST] Synced OK ({len(data)} orders total)")
+            log_detail(f"[WORKLIST] Sync completed ({len(data)} orders processed)")
         except Exception as e:
-            log(f"[WORKLIST] Sync error: {str(e)}")
+            log(f"[WORKLIST] Sync error: {str(e)}", level="ERROR")
 
         time.sleep(WORKLIST_PULL_INTERVAL)
 
@@ -343,7 +386,7 @@ def find_studies_by_accession(accession):
                 matched.append(sid)
         return matched
     except Exception as e:
-        log(f"[RESEND] Error finding study for {accession}: {e}")
+        log(f"[RESEND] Error finding {accession}: {e}", level="ERROR")
         return []
 
 
@@ -351,15 +394,13 @@ def resend_study_by_accession(accession):
     """Gửi lại toàn bộ study có accessionNumber tương ứng"""
     studies = find_studies_by_accession(accession)
     if not studies:
-        log(f"[RESEND] No study found in Orthanc for accession {accession}")
+        log(f"[RESEND] No study found for {accession}", level="WARNING")
         return
 
     for study_id in studies:
         try:
-            log(f"[RESEND] Forwarding study {study_id} for accession {accession}")
             forward_study(study_id, DATACENTER_PACS)
 
-            # Lấy lại thông tin study để gửi cập nhật lên Telerad
             study_info = json.loads(orthanc.RestApiGet(f"/studies/{study_id}"))
             tags = study_info.get("MainDicomTags", {})
             stats = json.loads(orthanc.RestApiGet(f"/studies/{study_id}/statistics"))
@@ -374,10 +415,10 @@ def resend_study_by_accession(accession):
                 count_instances=count_instances,
                 extras={"resend": True}
             )
-            log(f"[RESEND] Study {study_id} resent successfully to Telerad")
+            log(f"[RESEND] Study {study_id} completed")
 
         except Exception as e:
-            log(f"[RESEND] Error resending study {study_id}: {e}")
+            log(f"[RESEND] Error {study_id}: {e}", level="ERROR")
 
 
 # ===================== EVENT HANDLERS =====================
@@ -401,7 +442,7 @@ def OnNewStudy(study_id):
                     if mod:
                         modalities.add(mod)
                 except Exception as e:
-                    log(f"[NEW_STUDY] Error reading series {sid}: {str(e)}")
+                    log_detail(f"[NEW_STUDY] Error reading series {sid}: {str(e)}")
             modality = ",".join(sorted(modalities)) if modalities else "UNKNOWN"
 
         payload = {
@@ -415,11 +456,8 @@ def OnNewStudy(study_id):
             }
         }
 
-        log(f"[NEW_STUDY] Sending studyInstanceUID={payload['studyInstanceUID']}")
-        log(json.dumps(payload, indent=2))
-
-        r = requests.post(SKG_API_NEW_STUDY, json=payload, timeout=HTTP_TIMEOUT)
-        log(f"[POST] Success: {SKG_API_NEW_STUDY} (status={r.status_code})")
+        log_detail(f"[NEW_STUDY] {payload['accessionNumber']} | UID: {payload['studyInstanceUID']}")
+        log(f"[NEW_STUDY] Received: {payload['accessionNumber']}")
 
         update_telerad_eorders(
             accession=payload["accessionNumber"],
@@ -428,7 +466,7 @@ def OnNewStudy(study_id):
             extras=payload["extras"]
         )
     except Exception as e:
-        log(f"[NEW_STUDY] Unexpected error: {str(e)}")
+        log(f"[NEW_STUDY] Error: {str(e)}", level="ERROR")
 
 def OnStableStudy(study_id):
     try:
@@ -450,7 +488,7 @@ def OnStableStudy(study_id):
                     if mod:
                         modalities.add(mod)
                 except Exception as e:
-                    log(f"[STABLE_STUDY] Error reading series {sid}: {str(e)}")
+                    log_detail(f"[STABLE_STUDY] Error reading series {sid}: {str(e)}")
             modality = ",".join(sorted(modalities)) if modalities else "UNKNOWN"
 
         stats_raw = orthanc.RestApiGet(f"/studies/{study_id}/statistics")
@@ -458,26 +496,20 @@ def OnStableStudy(study_id):
         count_series = int(stats_json.get("CountSeries", 0))
         count_instances = int(stats_json.get("CountInstances", 0))
 
-        payload = {
-            "accessionNumber": accession_number,
-            "studyInstanceUID": study_uid,
-            "modality": modality,
-            "countSeries": count_series,
-            "countInstances": count_instances,
-            "event_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        requests.post(SKG_API_STABLE_STUDY, json=payload, timeout=HTTP_TIMEOUT)
+        log_detail(f"[STABLE_STUDY] {accession_number} | Series: {count_series} | Instances: {count_instances}")
+        log(f"[STABLE_STUDY] {accession_number} stable")
+
         delete_worklist(accession_number)
         update_telerad_eorders(accession_number, study_uid, "COMPLETED", count_series, count_instances)
         forward_study(study_id, DATACENTER_PACS)
     except Exception as e:
-        log(f"[STABLE_STUDY] Unexpected error: {str(e)}")
+        log(f"[STABLE_STUDY] Error: {str(e)}", level="ERROR")
 
 
 # ===================== CLEANUP + RESTART =====================
 def clean_old_studies():
     try:
-        log("[CLEANUP] Starting Orthanc DB cleanup...")
+        log_detail("[CLEANUP] Starting scan...")
         studies = json.loads(orthanc.RestApiGet("/studies"))
         now = datetime.datetime.now()
         deleted = 0
@@ -490,55 +522,35 @@ def clean_old_studies():
                 if (now - study_date).days > DELETE_OLDER_THAN_DAYS:
                     orthanc.RestApiDelete(f"/studies/{s}")
                     deleted += 1
-        log(f"[CLEANUP] Deleted {deleted} old studies (> {DELETE_OLDER_THAN_DAYS} days)")
+                    log_detail(f"[CLEANUP] Deleted study {s} (Date: {date_str})")
+        if deleted > 0:
+            log(f"[CLEANUP] Deleted {deleted} studies (>{DELETE_OLDER_THAN_DAYS} days)")
+        else:
+            log_detail("[CLEANUP] No old studies to delete")
     except Exception as e:
-        log(f"[CLEANUP] Error: {str(e)}")
-
-
-# def restart_orthanc():
-#     try:
-#         log("[CLEANUP] Restarting Orthanc service...")
-#         orthanc.RestApiPost("/tools/restart", "")
-#     except Exception as e:
-#         log(f"[CLEANUP] Restart failed: {str(e)}")
+        log(f"[CLEANUP] Error: {str(e)}", level="ERROR")
 
 
 def schedule_cleanup(interval_hours=CLEANUP_INTERVAL_HOURS):
     def job():
         while True:
             clean_old_studies()
-            # restart_orthanc()
             time.sleep(interval_hours * 3600)
     t = threading.Thread(target=job, daemon=True)
     t.start()
-    log(f"[CLEANUP] Scheduled every {interval_hours} hour(s)")
+    log_detail(f"[CLEANUP] Scheduled every {interval_hours} hour(s)")
 
 # ===================== HEALTH CHECK =====================
 def health_check():
     """Kiểm tra tình trạng plugin và ghi vào health log"""
     try:
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        skg_status = "ok"
-
-        # Kiểm tra API SKG (optional)
-        try:
-            test_url = SKG_API_STABLE_STUDY.replace("/stable-study", "/health")
-            r = requests.get(test_url, timeout=3)
-            if r.status_code  != 200:
-                skg_status = f"bad({r.status_code})"
-        except Exception:
-            skg_status = "unreachable"
-
-        msg = f"[HEALTH] {now} | plugin=gw_plugin | status=running | skg_api={skg_status}\n"
-
-        # Ghi ra file
+        msg = f"[HEALTH] {now} | plugin=running\n"
         with open(HEALTH_LOG_FILE, "a") as f:
             f.write(msg)
-
-        # Ghi thêm vào log Orthanc (tiện debug)
-        orthanc.LogWarning(msg.strip())
+        log_detail("[HEALTH] Check completed")
     except Exception as e:
-        orthanc.LogError(f"[HEALTH] Error: {str(e)}")
+        log(f"[HEALTH] Error: {str(e)}", level="ERROR")
 
 def schedule_health_check(interval_minutes=HEALTH_INTERVAL_MINUTES):
     def job():
@@ -547,7 +559,7 @@ def schedule_health_check(interval_minutes=HEALTH_INTERVAL_MINUTES):
             time.sleep(interval_minutes * 60)
     t = threading.Thread(target=job, daemon=True)
     t.start()
-    log(f"[HEALTH] Scheduled every {interval_minutes} minute(s)")
+    log_detail(f"[HEALTH] Scheduled every {interval_minutes} minute(s)")
 
 # ===================== CHANGE HANDLER =====================
 def OnChange(changeType, level, resourceId):
@@ -557,19 +569,24 @@ def OnChange(changeType, level, resourceId):
         elif changeType == orthanc.ChangeType.STABLE_STUDY:
             OnStableStudy(resourceId)
     except Exception as e:
-        log(f"[CHANGE] Error handling change: {str(e)}")
+        log(f"[CHANGE] Error: {str(e)}", level="ERROR")
 
 
 # ===================== STARTUP =====================
 def Initialize():
     log("=" * 60)
-    log("GW Plugin initializing (NEW_STUDY + STABLE_STUDY + Auto Forward + TELERAD + CLEANUP)...")
+    log("GW Plugin v2.0 initializing...")
+    log(f"Detail log: {DETAIL_LOG_FILE}")
+    log(f"Health log: {HEALTH_LOG_FILE}")
+    log(f"Telerad: {'Enabled' if ENABLE_TELERAD else 'Disabled'}")
+    
     orthanc.RegisterOnChangeCallback(OnChange)
     threading.Thread(target=sync_worklist, daemon=True).start()
     schedule_cleanup()
     schedule_health_check()
-    log("[WORKLIST] Background sync started.")
-    log("[OK] Callbacks & cleanup scheduler registered")
+    
+    log("GW Plugin initialized successfully")
+    log("=" * 60)
 
 
 def Finalize():

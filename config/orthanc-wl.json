@@ -11,11 +11,16 @@
   "Plugins": [
     "/usr/share/orthanc/plugins"
   ],
+
+  "DicomModalities": {
+    "TESTER": [ "TESTER", "172.18.0.1", 4249 ]
+  },
+
   "PostgreSQL": {
     "Enable": true,
     "Host": "postgres",
     "Port": 5432,
-    "Database": "orthanc_db_worklist",
+    "Database": "orthanc_db_wl",
     "Username": "orthanc",
     "Password": "C@resNov@"
   },
@@ -23,6 +28,13 @@
     "Enable": true,
     "Directory": "/var/lib/orthanc/worklists",
     "PollingInterval": 5
+  },
+  "Worklists": {
+    "Enable": true,
+    "DicomAet": "ORTHANC_WL",
+    "DicomPort": 4242,
+    "DicomCheckModality": false,
+    "StorageDirectory": "/var/lib/orthanc/worklists"
   },
   "StorageCompression": true,
   "LogLevel": "info"

@@ -1,15 +1,6 @@
-# ============================
-# Script: test_upload.ps1
-# Purpose:
-#   - Ask for an AccessionNumber (must match the order on Telerad)
-#   - Edit the DICOM file
-#   - Decompress image if needed
-#   - Upload to Orthanc Gateway
-# ============================
-
 # --- Default Configuration ---
-$DicomToolsPath = "C:\Mysoftware\dcmtk\bin"    # Path to dcmodify, storescu, dcmdjpeg
-$DicomFolder = "E:\Dicomtest"        # Folder containing the test DICOM file
+$DicomToolsPath = "C:\Mysoftware\dcmtk\bin"
+$DicomFolder = "E:\Dicomtest"
 $SourceFile = "$DicomFolder\0002.dcm"
 $ModifiedFile = "$DicomFolder\0002_modified.dcm"
 $UncompressedFile = "$DicomFolder\0002_uncompressed.dcm"
@@ -43,7 +34,7 @@ if (-not (Test-Path $ModifiedFile)) {
 }
 Write-Host "Created modified file: $ModifiedFile"
 
-# --- Decompress image (to avoid Store Failed errors) ---
+# --- Decompress image (if needed) ---
 Write-Host "Checking and decompressing JPEG (if needed)..."
 & "$DicomToolsPath\dcmdjpeg.exe" $ModifiedFile $UncompressedFile
 
@@ -58,6 +49,4 @@ if (-not (Test-Path $UncompressedFile)) {
 Write-Host ("Uploading to Orthanc ({0}@{1}:{2})..." -f $OrthancAET, $OrthancHost, $OrthancPort)
 & "$DicomToolsPath\storescu.exe" -v -aec $OrthancAET $OrthancHost $OrthancPort $UncompressedFile
 
-Write-Host "Upload completed successfully!"
-Write-Host "`nUse the following command to check Orthanc logs:"
-Write-Host "docker logs -f orthanc-multitenant"
+Write-Host "`n=== Upload completed! ===" -ForegroundColor Green

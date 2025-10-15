@@ -12,7 +12,7 @@
     "Port": 5432,
     "Database": "orthanc_db_main",
     "Username": "orthanc",
-    "Password": "${ORTHANC_DB_PASSWORD}",
+    "Password": "orthanc",
     "Lock": true
   },
 
